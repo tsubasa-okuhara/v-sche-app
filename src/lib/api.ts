@@ -51,7 +51,12 @@ export type ServiceRecord = {
 export const todayISO = () => dayjs().format('YYYY-MM-DD');
 
 export async function signInMagicLink(email: string) {
-  const { error } = await supabase.auth.signInWithOtp({ email });
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: {
+      emailRedirectTo: window.location.origin, // ← デプロイ先を自動で使う
+    },
+  });
   if (error) throw error;
 }
 
