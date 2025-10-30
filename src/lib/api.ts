@@ -203,6 +203,7 @@ export async function submitNote(taskId: string, answers: any) {
 }
 
 /** ログイン中の人の「未入力ノート（note_text が空）」を取得 */
+// ① 未入力ノート一覧
 export async function fetchMyPendingNotes(email?: string) {
   let q = supabase
     .from('service_notes')
@@ -212,16 +213,25 @@ export async function fetchMyPendingNotes(email?: string) {
         task_date, helper_name, client_name, start_time, end_time, destination, helper_email
       )
     `)
-    // null または '' を未入力扱い
-    .or('note_text.is.null,note_text.eq.')
+    .or('note_text.is.null,note_text.eq.') // null or '' を未入力扱い
     .order('created_at', { ascending: false });
 
   if (email) q = q.eq('schedule_tasks.helper_email', email);
 
   const { data, error } = await q;
   if (error) throw error;
-  return (data || []) as PendingNote[];
+
+  // 👇 ここで schedule_tasks を必ず「オブジェクト or null」に正規化
+  const normalized: PendingNote[] = (data || []).map((row: any) => ({
+    ...row,
+    schedule_tasks: Array.isArray(row.schedule_tasks)
+      ? (row.schedule_tasks[0] ?? null)
+      : row.schedule_tasks ?? null,
+  }));
+
+  return normalized;
 }
+
 
 /** note_id から直接更新 → AI整形実行 */
 export async function submitNoteByNoteId(noteId: string, answers: any) {
@@ -245,8 +255,10 @@ export async function fetchMyRecords(email: string, from?: string, to?: string) 
         task_date, start_time, end_time, client_name, helper_name, destination, helper_email
       )
     `)
-    .not('note_text', 'is', null)  // null ではない
-    .neq('note_text', '')          // 空文字でもない
+    .not('note_text', 'is', null)
+    .neq('note_text', '');
+
+  q = q
     .eq('schedule_tasks.helper_email', email)
     .order('schedule_tasks.task_date', { ascending: false })
     .order('schedule_tasks.start_time', { ascending: false });
@@ -256,5 +268,14 @@ export async function fetchMyRecords(email: string, from?: string, to?: string) 
 
   const { data, error } = await q;
   if (error) throw error;
-  return (data || []) as ServiceRecord[];
+
+  // 👇 同じく正規化
+  const normalized: ServiceRecord[] = (data || []).map((row: any) => ({
+    ...row,
+    schedule_tasks: Array.isArray(row.schedule_tasks)
+      ? (row.schedule_tasks[0] ?? null)
+      : row.schedule_tasks ?? null,
+  }));
+
+  return normalized;
 }
