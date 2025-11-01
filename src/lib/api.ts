@@ -54,7 +54,8 @@ export async function signInMagicLink(email: string) {
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: window.location.origin, // ← デプロイ先を自動で使う
+      // 現在のURLごと（#/report?...含む）を保持して戻す
+      emailRedirectTo: window.location.href,
     },
   });
   if (error) throw error;
@@ -283,4 +284,81 @@ export async function fetchMyRecords(email: string, from?: string, to?: string) 
   }));
 
   return normalized;
+}
+
+/** 利用者名の候補を取得（重複排除・五十音順） */
+export async function fetchClients(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('schedule_tasks')
+    .select('client_name')
+    .not('client_name', 'is', null);
+
+  if (error) throw error;
+
+  const list = Array.from(
+    new Set((data || []).map((d: any) => d.client_name).filter(Boolean))
+  );
+  // 日本語も自然に並ぶように localeCompare(JP)
+  return list.sort((a, b) => a.localeCompare(b, 'ja'));
+}
+
+/** 利用者＋期間で、note + schedule_tasks を取得（帳票用） */
+export async function fetchRecordsByClient(
+  client: string,
+  from?: string, // 'YYYY-MM-DD'
+  to?: string    // 'YYYY-MM-DD'
+): Promise<Array<{
+  id: string;
+  note_text: string | null;
+  created_at: string;
+  schedule_tasks: {
+    task_date: string;
+    start_time: string;
+    end_time: string;
+    client_name: string;
+    helper_name: string;
+    destination: string | null;
+    helper_email: string | null;
+  } | null;
+}>> {
+  let q = supabase
+    .from('service_notes')
+    .select(`
+      id, note_text, created_at,
+      schedule_tasks (
+        task_date, start_time, end_time, client_name, helper_name, destination, helper_email
+      )
+    `)
+    .eq('schedule_tasks.client_name', client)
+    .order('schedule_tasks.task_date', { ascending: true })
+    .order('schedule_tasks.start_time', { ascending: true });
+
+  if (from) q = q.gte('schedule_tasks.task_date', from);
+  if (to)   q = q.lte('schedule_tasks.task_date', to);
+
+  const { data, error } = await q;
+  if (error) throw error;
+
+  // JOIN の戻りが配列になることがあるので正規化（常に「オブジェクト or null」に）
+  const normalized = (data || []).map((row: any) => ({
+    ...row,
+    schedule_tasks: Array.isArray(row.schedule_tasks)
+      ? (row.schedule_tasks[0] ?? null)
+      : row.schedule_tasks ?? null,
+  }));
+
+  return normalized as Array<{
+    id: string;
+    note_text: string | null;
+    created_at: string;
+    schedule_tasks: {
+      task_date: string;
+      start_time: string;
+      end_time: string;
+      client_name: string;
+      helper_name: string;
+      destination: string | null;
+      helper_email: string | null;
+    } | null;
+  }>;
 }

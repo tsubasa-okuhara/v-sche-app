@@ -40,3 +40,61 @@
 .read-the-docs {
   color: #888;
 }
+
+/* ---- 記録ページ ---- */
+.page {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 16px;
+  font-family: -apple-system, system-ui, "Segoe UI", Roboto, "ヒラギノ角ゴ ProN", "メイリオ", sans-serif;
+}
+
+.header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+.header-title { font-size:20px; font-weight:700; }
+.tabs { display:flex; gap:8px; }
+.tab { padding:6px 10px; border-radius:8px; text-decoration:none; color:#333; background:#f3f4f6; }
+.tab.active { background:#e5f2ff; color:#0369a1; }
+
+.toolbar { display:flex; align-items:center; gap:12px; padding:8px 0; }
+.toolbar .spacer { flex:1; }
+.toolbar input[type="month"] { padding:6px 8px; border:1px solid #d1d5db; border-radius:6px; }
+
+.date-group { margin:18px 0; }
+.date-title { font-size:16px; color:#6b7280; margin:0 0 8px; }
+
+.record-card {
+  border:1px solid #e5e7eb; border-radius:12px; padding:12px; margin-bottom:12px;
+  background:#fff; box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+.record-header .title { display:flex; gap:10px; align-items:center; font-weight:600; }
+.record-header .client { font-size:16px; }
+.record-header .time { font-size:14px; color:#6b7280; }
+.record-header .dest { font-size:13px; color:#4b5563; margin-top:4px; }
+
+.record-body { margin-top:8px; }
+.record-body .note {
+  white-space: pre-wrap; font-size:15px; line-height:1.8; color:#111827;
+  margin:0; font-feature-settings:"palt";
+}
+
+.record-footer {
+  margin-top:10px; display:flex; align-items:center; gap:8px; color:#6b7280; font-size:13px;
+}
+.record-footer .actions { margin-left:auto; display:flex; gap:6px; }
+.record-footer button {
+  padding:6px 10px; border:1px solid #d1d5db; border-radius:8px; background:#f9fafb; cursor:pointer;
+}
+.record-footer button:hover { background:#eef2ff; }
+
+/* 単票印刷: 対象カードのみ可視に */
+@media print {
+  .header, .toolbar, .tabs, nav, .actions { display:none !important; }
+  body, .page { background:#fff; }
+  .record-card { page-break-inside: avoid; border:none; box-shadow:none; }
+  .record-card:not(.print-only) { display:block; }
+}
+
+/* iOS Safari 微調整 */
+@supports (-webkit-touch-callout: none) {
+  input, button { font-size: 16px; } /* ズーム抑制 */
+}
