@@ -5,19 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Vサービス記録</title>
 
-    <!-- 既存: Vite標準アイコン（不要なら削除OK） -->
-    <!-- <link rel="icon" type="image/svg+xml" href="/vite.svg" /> -->
-
-    <!-- ✅ PWA用の設定ここから -->
+    <!-- PWA / iOS 対応 -->
+    <meta name="theme-color" content="#E98C00" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="theme-color" content="#E98C00" />
 
-    <!-- ✅ PWAアイコン -->
-    <link rel="manifest" href="/manifest.json" />
-    <link rel="icon" href="/favicon-32.png" sizes="32x32" />
-    <link rel="apple-touch-icon" href="/favicon-180.png" />
-    <!-- ✅ ここまで追加 -->
+    <!-- マニフェスト -->
+    <link rel="manifest" href="/manifest.json?v=5" />
+
+    <!-- ファビコン（任意） -->
+    <link rel="icon" href="/favicon-32.png?v=5" sizes="32x32" />
+    <link rel="icon" href="/favicon-16.png?v=5" sizes="16x16" />
+
+    <!-- iOS ホーム画面アイコン（最重要）-->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=5" sizes="180x180" />
   </head>
 
   <body>
