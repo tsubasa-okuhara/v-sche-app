@@ -1,30 +1,51 @@
 // src/pages/Records.tsx
 import { useEffect, useMemo, useState } from 'react';
 import { getSessionEmail, fetchMyRecords, todayISO } from '../lib/api';
+import '../style-records.css';
 
-type Grouped = Record<string, ReturnType<typeof shapeRecord>[]>;
+type Shaped = ReturnType<typeof shapeRecord>;
+type Grouped = Record<string, Shaped[]>;
+
+function getHashParams() {
+  // 例: #/report?client=冨田様&from=2025-10-01&to=2025-10-31
+  const hash = window.location.hash || '';
+  const q = hash.includes('?') ? hash.split('?')[1] : '';
+  return new URLSearchParams(q);
+}
 
 function shapeRecord(r: any) {
-  // schedule_tasks は null の可能性があるため保護
-  const t = r.schedule_tasks ?? {};
+  const t = r?.schedule_tasks ?? {};
   return {
-    id: r.id as string,
-    note_text: (r.note_text as string) ?? '',
-    created_at: (r.created_at as string) ?? '',
-    task_date: (t.task_date as string) ?? '',
-    start_time: (t.start_time as string) ?? '',
-    end_time: (t.end_time as string) ?? '',
-    client_name: (t.client_name as string) ?? '',
-    helper_name: (t.helper_name as string) ?? '',
-    destination: (t.destination as string) ?? '',
+    id: String(r?.id || ''),
+    note_text: String(r?.note_text || ''),
+    created_at: String(r?.created_at || ''),
+    task_date: String(t?.task_date || ''),   // 例: 2025-10-22
+    start_time: String(t?.start_time || ''),
+    end_time: String(t?.end_time || ''),
+    client_name: String(t?.client_name || ''),
+    helper_name: String(t?.helper_name || ''),
+    destination: String(t?.destination || ''),
   };
 }
 
 export default function Records() {
   const [email, setEmail] = useState<string | null>(null);
-  const [records, setRecords] = useState<ReturnType<typeof shapeRecord>[]>([]);
+  const [records, setRecords] = useState<Shaped[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // URL のクエリ（client/from/to）
+  const params = getHashParams();
+  const clientQuery = params.get('client') || '';
+  const fromQuery = params.get('from') || '';
+  const toQuery = params.get('to') || '';
+
+  // UI 側でも月選択できるように fallback
   const [month, setMonth] = useState(() => {
+    if (fromQuery) {
+      // from 指定がある場合はそれを起点に見せたい
+      const [y,m] = fromQuery.split('-').map(Number);
+      return `${y}-${String(m).padStart(2, '0')}`;
+    }
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
@@ -33,9 +54,12 @@ export default function Records() {
     const [y, m] = month.split('-').map(Number);
     const from = `${y}-${String(m).padStart(2, '0')}-01`;
     const lastDay = new Date(y, m, 0).getDate();
-    const to = `${y}-${String(m).padStart(2, '0')}-${lastDay}`;
+    const to = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2,'0')}`;
     return { from, to };
   }, [month]);
+
+  const effectiveFrom = fromQuery || monthFromTo.from;
+  const effectiveTo = toQuery || monthFromTo.to;
 
   const load = async () => {
     setLoading(true);
@@ -43,16 +67,32 @@ export default function Records() {
       const e = await getSessionEmail();
       setEmail(e);
       if (!e) return;
-      const list = await fetchMyRecords(e, monthFromTo.from, monthFromTo.to);
-      setRecords(list.map(shapeRecord));
+      const list = await fetchMyRecords(e, effectiveFrom, effectiveTo);
+      const shaped = list.map(shapeRecord);
+      // client= が指定されていたらクライアント名で絞り込み
+      const filtered = clientQuery
+        ? shaped.filter(r => r.client_name === clientQuery)
+        : shaped;
+      setRecords(filtered);
     } catch (e: any) {
-      alert(e.message || '取得に失敗しました');
+      alert(e.message || '記録の取得に失敗しました');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { load(); }, [month]);
+  useEffect(() => {
+    load();
+    // hashのfrom/to/clientが変わった場合にも再取得したい場合は以下のように
+    const onHash = () => {
+      // ※ 必要に応じて再読込
+      // ここでは簡易実装として、ページをリロードしてパラメータ再評価
+      window.location.reload();
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveFrom, effectiveTo, clientQuery]);
 
   // 日付でグルーピング
   const grouped = useMemo(() => {
@@ -67,6 +107,22 @@ export default function Records() {
   // 印刷
   const printAll = () => window.print();
 
+  const copyText = (text: string) => {
+    navigator.clipboard?.writeText(text)
+      .then(() => alert('本文をコピーしました'))
+      .catch(() => alert('コピーに失敗しました'));
+  };
+
+  const printOne = (id: string) => {
+    // key 属性はDOMに出ないので data-id を使う
+    const el = document.querySelector<HTMLElement>(`article.record-card[data-id="${id}"]`);
+    if (!el) return window.print();
+    el.classList.add('print-only');
+    window.print();
+    // ちょっと待って復元
+    setTimeout(() => el.classList.remove('print-only'), 500);
+  };
+
   return (
     <div className="page">
       <header className="header">
@@ -78,6 +134,10 @@ export default function Records() {
       </header>
 
       <section className="toolbar">
+        <div>
+          <b>表示期間</b>：{effectiveFrom} 〜 {effectiveTo}
+        </div>
+        <div className="spacer" />
         <label>
           月を選択：
           <input
@@ -86,36 +146,37 @@ export default function Records() {
             onChange={e => setMonth(e.target.value)}
           />
         </label>
-        <div className="spacer" />
         <button onClick={load} disabled={loading}>再読み込み</button>
-        <button onClick={printAll}>印刷</button>
+        <button onClick={printAll}>一覧を印刷</button>
       </section>
 
       <section>
         {loading && <p>読み込み中…</p>}
-        {!loading && records.length === 0 && <p>この月の記録はありません。</p>}
+        {!loading && records.length === 0 && <p>この条件の記録はありません。</p>}
 
-        {Object.entries(grouped).sort((a,b)=>a[0]<b[0]?1:-1).map(([date, items]) => (
+        {Object.entries(grouped)
+          .sort((a,b)=> a[0] < b[0] ? 1 : -1) // 新しい日付が上に来る
+          .map(([date, items]) => (
           <div key={date} className="date-group">
             <h3 className="date-title">{date}</h3>
             {items.map(r => (
-              <article key={r.id} className="record-card">
+              <article key={r.id} data-id={r.id} className="record-card">
                 <header className="record-header">
                   <div className="title">
                     <span className="client">{r.client_name || '（利用者不明）'}</span>
-                    <span className="time">
-                      {r.start_time}〜{r.end_time}
-                    </span>
+                    <span className="time">{r.start_time}〜{r.end_time}</span>
                   </div>
                   {r.destination && <div className="dest">〔{r.destination}〕</div>}
                 </header>
+
                 <section className="record-body">
                   <pre className="note">{r.note_text}</pre>
                 </section>
+
                 <footer className="record-footer">
                   <span className="helper">担当：{r.helper_name || email || '—'}</span>
                   <div className="actions">
-                    <button onClick={() => copy(r.note_text)}>コピー</button>
+                    <button onClick={() => copyText(r.note_text)}>コピー</button>
                     <button onClick={() => printOne(r.id)}>単票印刷</button>
                   </div>
                 </footer>
@@ -126,20 +187,4 @@ export default function Records() {
       </section>
     </div>
   );
-}
-
-function copy(text: string) {
-  navigator.clipboard.writeText(text).then(
-    () => alert('本文をコピーしました'),
-    () => alert('コピーに失敗しました')
-  );
-}
-
-// 単票印刷：対象カードだけを印刷用に表示→印刷→戻す
-function printOne(id: string) {
-  const el = document.querySelector(`article.record-card[key="${id}"]`) || document.querySelector(`[data-id="${id}"]`);
-  if (!el) return window.print();
-  el.classList.add('print-only');
-  window.print();
-  setTimeout(() => el.classList.remove('print-only'), 500);
 }
