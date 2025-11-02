@@ -265,9 +265,9 @@ export async function fetchMyRecords(email: string, from?: string, to?: string) 
     .neq('note_text', '');
 
   q = q
-    .eq('schedule_tasks.helper_email', email)
-    .order('schedule_tasks.task_date', { ascending: false })
-    .order('schedule_tasks.start_time', { ascending: false });
+  .eq('schedule_tasks.helper_email', email)
+  .order('task_date',  { ascending: false, foreignTable: 'schedule_tasks' })
+  .order('start_time', { ascending: false, foreignTable: 'schedule_tasks' });
 
   if (from) q = q.gte('schedule_tasks.task_date', from);
   if (to)   q = q.lte('schedule_tasks.task_date', to);
@@ -330,8 +330,8 @@ export async function fetchRecordsByClient(
       )
     `)
     .eq('schedule_tasks.client_name', client)
-    .order('schedule_tasks.task_date', { ascending: true })
-    .order('schedule_tasks.start_time', { ascending: true });
+    .order('task_date',  { ascending: true, foreignTable: 'schedule_tasks' })
+    .order('start_time', { ascending: true, foreignTable: 'schedule_tasks' });
 
   if (from) q = q.gte('schedule_tasks.task_date', from);
   if (to)   q = q.lte('schedule_tasks.task_date', to);
