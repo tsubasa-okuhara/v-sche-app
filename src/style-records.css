@@ -25,3 +25,89 @@
   }
   .record-card.print-only { position: absolute; inset: 0; }
 }
+
+/* 用紙全体（A4縦・左右10mm） */
+.form {
+  width: 190mm;      /* A4(210) - 左右余白(各10) */
+  margin: 10mm auto;
+  background: #fff;
+  color: #111;
+  page-break-inside: avoid;
+  border: 1px solid #d1d5db;
+  box-shadow: 0 1mm 2mm rgba(0,0,0,.08);
+  padding: 6mm;
+  position: relative;
+}
+
+/* タイトル */
+.form .title {
+  text-align: center;
+  font-size: 6mm;
+  font-weight: 700;
+  margin: 0 0 3mm;
+}
+
+/* 帳票グリッド（17列 × 27行くらい） */
+.form .grid {
+  display: grid;
+  grid-template-columns: repeat(16, 1fr);
+  grid-auto-rows: 8mm;  /* 行の高さ */
+  gap: 0;               /* 枠線をつなぐ */
+  border: 1px solid #bbb;
+}
+
+/* セルの基本 */
+.form .cell {
+  border: 1px solid #bbb;
+  padding: 2mm;
+  font-size: 3.3mm;
+  line-height: 1.5;
+  background: #fff;
+}
+
+/* 小見出し・ラベル */
+.form .head {
+  background: #e5e5e5;
+  font-weight: 600;
+}
+.form .head-l { border-right: none; }
+.form .head-r { border-left: none; }
+
+/* サブ見出し帯（「移動支援サービス実績記録票」） */
+.form .subhead {
+  grid-row: 9 / 10;
+  background: #d9d9d9;
+  font-weight: 700;
+  text-align: center;
+  padding: 1.5mm 0;
+}
+
+/* 値セル */
+.form .value { background: #fff; }
+
+/* 記入欄のベージュ */
+.form .beige { background: #f7f1e0; }
+
+.form .center { text-align: center; }
+
+/* 本文 note */
+.form .note {
+  white-space: pre-wrap;
+  font-feature-settings: "palt";
+  margin: 0;
+}
+
+/* ページ番号 */
+.form .pno {
+  text-align: right;
+  margin-top: 2mm;
+  color: #666;
+  font-size: 3mm;
+}
+
+/* 印刷調整 */
+@media print {
+  body { background: #fff; }
+  .header, .toolbar, .tabs, nav { display: none !important; }
+  .form { box-shadow: none; margin: 6mm auto; }
+}
