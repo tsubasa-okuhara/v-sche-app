@@ -99,40 +99,78 @@ export default function ClientReport() {
 
             <table className="report-table" cellPadding={0} cellSpacing={0}>
               <tbody>
+                {/* 1) 上部のラベル行 */}
                 <tr>
                   <td className="label">事業所名</td>
-                  <td colSpan={3}>ビレッジつばさ</td>
+                  <td colSpan={3} className="value">ビレッジつばさ</td>
                   <td className="label">利用者確認欄</td>
-                  <td colSpan={2}></td>
+                  <td colSpan={2} className="value"></td>
                   <td className="label">ヘルパー名</td>
-                  <td>{t.helper_name || '—'}</td>
+                  <td className="value">{t.helper_name || '—'}</td>
                 </tr>
+
+                {/* 2) 利用者名／日付 */}
                 <tr>
                   <td className="label">利用者名</td>
-                  <td colSpan={2}>{t.client_name || '—'}</td>
+                  <td colSpan={2} className="value">{t.client_name || '—'}</td>
                   <td className="label">日付</td>
-                  <td colSpan={5}>{d}</td>
+                  <td colSpan={5} className="value">{d}</td>
                 </tr>
+
+                {/* 3) 時間 */}
                 <tr>
                   <td className="label">時間</td>
-                  <td colSpan={8}>{t.start_time || '—'} 〜 {t.end_time || '—'}</td>
+                  <td colSpan={8} className="value center">
+                    {t.start_time || '—'} <span className="sep">〜</span> {t.end_time || '—'}
+                  </td>
                 </tr>
-                <tr>
-                  <td className="label">行先</td>
-                  <td colSpan={8}>{t.destination || '—'}</td>
+
+                {/* 4) 見出し帯（行先／主な援助内容／備考） */}
+                <tr className="band">
+                  <td className="band-cell center" colSpan={2}>行　先</td>
+                  <td className="band-cell center" colSpan={5}>主な援助内容</td>
+                  <td className="band-cell center" colSpan={2}>備　考</td>
                 </tr>
+
+                {/* 5) 行先＋主な援助内容＋備考（ベージュ） */}
                 <tr>
-                  <td className="label">主な援助内容</td>
-                  <td colSpan={8}>
+                  <td className="sidehead center">記</td>
+                  <td className="beige note-left" colSpan={2}>
+                    {/* 行先・経路メモ欄（必要に応じて） */}
+                    {t.destination || '—'}
+                  </td>
+                  <td className="beige note-right" colSpan={5}>
                     <pre className="note">{(r.note_text || '').trim() || '（実績テキスト未入力）'}</pre>
+                  </td>
+                  <td className="beige note-memo" colSpan={2}></td>
+                </tr>
+
+                {/* 6) 経路帯 */}
+                <tr className="band thin-top">
+                  <td className="sidehead center">録</td>
+                  <td className="band-cell center" colSpan={2}>経　路</td>
+                  <td className="band-cell center light" colSpan={7}></td>
+                </tr>
+
+                {/* 7) 経路のチェック（ダミー：見た目だけ） */}
+                <tr>
+                  <td className="sidehead center">レ</td>
+                  <td className="beige center w-veh" colSpan={2}>徒歩</td>
+                  <td className="beige center w-veh" colSpan={2}>バス</td>
+                  <td className="beige center w-veh" colSpan={2}>電車</td>
+                  <td className="light" colSpan={3}></td>
+                </tr>
+
+                {/* 8) フッター（作成日時/ページ番号） */}
+                <tr>
+                  <td colSpan={9} className="no-border">
+                    <div className="report-footer">
+                      記録作成：{dayjs(r.created_at).format('YYYY/MM/DD HH:mm')}（{idx + 1} / {records.length}）
+                    </div>
                   </td>
                 </tr>
               </tbody>
             </table>
-
-            <div className="report-footer">
-              記録作成：{dayjs(r.created_at).format('YYYY/MM/DD HH:mm')}（{idx + 1} / {records.length}）
-            </div>
           </div>
         );
       })}
@@ -152,12 +190,10 @@ const ALLOWLIST_CSV =
 async function checkAllowList(email: string | null): Promise<boolean> {
   if (!email) return false;
 
-  // ← ここに追加！
-  const DEBUG = false; // trueにすると詳細ログが出る
+  const DEBUG = false; // trueで詳細ログ
 
   try {
-    if (DEBUG) console.log('[allowlist] CSV_URL =', ALLOWLIST_CSV);
-    if (DEBUG) console.log('[allowlist] login email =', email);
+    if (DEBUG) console.log('[allowlist] CSV_URL =', ALLOWLIST_CSV, 'email=', email);
 
     const res = await fetch(ALLOWLIST_CSV, { cache: 'no-store' });
     if (!res.ok) {
@@ -169,25 +205,28 @@ async function checkAllowList(email: string | null): Promise<boolean> {
     const csv = (await res.text()).replace(/^\uFEFF/, '').trim();
     const rows = csv
       .split(/\r?\n/)
-      .map(l => l.split(',').map(s => s.trim()));
+      .map(l => l.split(',').map(s => s.trim()))
+      .filter(cols => cols.length >= 1);
 
+    if (rows.length < 2) return false;
+
+    // ヘッダからメール列のインデックス自動検出
     const header = rows[0].map(h => h.toLowerCase());
     let emailIdx = header.findIndex(h =>
       h.includes('email') || h.includes('mail') || h.includes('メール')
     );
-    if (emailIdx < 0) emailIdx = 1;
+    if (emailIdx < 0) emailIdx = 1; // なければ2列目
 
+    // 正規化（全角スペース/クォートも除去）
     const normalize = (s: string) => s.toLowerCase().replace(/[\s"'\u3000]/g, '');
-    const emails = new Set(rows.slice(1).map(r => normalize(r[emailIdx] || '')).filter(Boolean));
+    const emails = new Set(
+      rows.slice(1)
+        .map(r => normalize(r[emailIdx] || ''))
+        .filter(Boolean)
+    );
 
     const ok = emails.has(normalize(email));
-
-    // ← ここにも！
-    if (DEBUG) {
-      console.log('[allowlist] parsed emails =', Array.from(emails));
-      console.log('[allowlist] matched =', ok);
-    }
-
+    if (DEBUG) console.log('[allowlist] parsed =', Array.from(emails), 'matched=', ok);
     return ok;
   } catch (e) {
     if (DEBUG) console.error('checkAllowList エラー:', e);
