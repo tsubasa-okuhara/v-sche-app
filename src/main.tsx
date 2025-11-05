@@ -1,26 +1,28 @@
 // src/main.tsx
-import './style-records.css';
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import './index.css';
+import { StrictMode, useEffect, useState } from 'react';
+import { createRoot } from 'react-dom/client';
+
+import './index.css';     // ベースUI（toolbarなど）
+import './report.css';    // ← これを必ず後ろに（帳票デザインを上書き適用）
+
 import AppTasks from './AppTasks';
 import ClientReport from './ClientReport';
 
 function Router() {
-  const [hash, setHash] = React.useState(window.location.hash);
-  React.useEffect(() => {
+  const [hash, setHash] = useState(window.location.hash);
+  useEffect(() => {
     const onHash = () => setHash(window.location.hash);
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
-  if (hash.startsWith('#/report')) return <ClientReport />;     // ← 帳票
-  if (hash.startsWith('#/records')) return <ClientReport />;    // 互換: /records でもOK
-  return <AppTasks />;                                          // 既存の予定/記録画面
+  // 帳票URL (#/report...) のときは ClientReport を表示
+  if (hash.startsWith('#/report')) return <ClientReport />;
+  return <AppTasks />;
 }
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
     <Router />
-  </React.StrictMode>
+  </StrictMode>
 );
