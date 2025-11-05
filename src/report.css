@@ -1,80 +1,84 @@
-/* ========= 帳票（紙フォーム風） ========= */
+/* ===== A4 帳票（紙フォーム風） ===== */
 
 .report-page {
-  padding: 24px;
-  background: #f8fafc;
-  color: #111827;
-  font-family: -apple-system, system-ui, "Segoe UI", Roboto, "ヒラギノ角ゴ ProN", "メイリオ", sans-serif;
+  background: #f5f7fa;
+  padding: 12mm 0;
+  color: #111;
+  font-family: "Yu Gothic Medium", "Hiragino Kaku Gothic ProN", Meiryo, system-ui, sans-serif;
+  font-size: 3.3mm;                 /* 実帳票に近い縮尺 */
+  line-height: 1.55;
 }
 
 .report-sheet {
-  width: 960px;
-  margin: 24px auto;
+  width: 190mm;                     /* A4(210) - 左右10mm */
+  margin: 0 auto 10mm;
   background: #fff;
-  border: 1px solid #9ca3af;
-  border-radius: 4px;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
-  page-break-inside: avoid;
+  border: 1px solid #666;
+  box-shadow: 0 1mm 2mm rgba(0,0,0,.08);
+  padding: 6mm 8mm;
+  page-break-after: always;
 }
 
 .report-title {
-  text-align: center;
+  text-align: left;
   font-weight: 700;
-  font-size: 22px;
-  padding: 16px 0 8px;
+  font-size: 5mm;
+  margin: 0 0 4mm;
 }
 
-/* 表全体 */
+/* 罫線のきいた表 */
 .report-table {
-  width: 920px;
-  margin: 8px auto 16px;
+  width: 100%;
   border-collapse: collapse;
-  table-layout: fixed;
-  font-size: 14px;
-}
-.report-table td, .report-table th {
-  border: 1px solid #9ca3af;
-  padding: 6px 8px;
-  vertical-align: top;
-  word-break: break-all;
+  border: 1px solid #666;
+  table-layout: fixed; /* 幅を揃える */
 }
 
-/* グレー帯の見出しセル */
+.report-table td, .report-table th {
+  border: 1px solid #666;
+  padding: 2.2mm 2mm;
+  vertical-align: top;
+  word-break: break-word;
+}
+
+/* ラベル列（左帯） */
 .report-table .label {
-  width: 110px;
-  background: #e5e7eb;
+  background: #eee;
+  width: 18mm;          /* 左のラベル幅を固定 */
   text-align: center;
   font-weight: 600;
 }
 
-/* 大きい黄色エリア（記入欄） */
-.report-table .note {
-  display: block;
+/* ベージュの記入欄 */
+.report-table .beige {
+  background: #faf3dd;
+}
+
+/* 利用者確認欄：点線のサイン枠 */
+.sign-box {
+  height: 20mm;
+  border: 1px dashed #aaa;
+}
+
+/* 主な援助内容（本文は行間広く） */
+.note {
   white-space: pre-wrap;
-  line-height: 1.8;
-  background: #fff7d6;  /* 紙の色味に寄せる */
-  min-height: 180px;
-  padding: 4px 6px;
+  font-feature-settings: "palt";
+  line-height: 1.9;
+  margin: 0;
 }
 
-/* 下端のページ番号風 */
-.footer {
+/* フッター（作成日時/ページNo） */
+.report-footer {
+  margin-top: 3mm;
+  color: #444;
   text-align: right;
-  padding: 8px 16px 16px;
-  color: #6b7280;
-  font-size: 12px;
 }
 
-/* 印刷最適化 */
+/* 印刷調整 */
 @media print {
   body { background: #fff; }
   .report-page { padding: 0; }
-  .report-sheet {
-    width: 100%;
-    margin: 0 0 16mm 0;
-    box-shadow: none;
-    border: 1px solid #9ca3af;
-    page-break-after: always;
-  }
-  .footer { padding-right: 8mm; }
+  .report-sheet { margin: 0 auto; box-shadow: none; }
+  .report-title { margin-top: 0; }
 }

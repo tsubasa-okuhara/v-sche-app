@@ -142,50 +142,55 @@ export default function ClientReport() {
 
 /* =========================================
    閲覧制限：GoogleスプレッドシートのCSVを許可表として利用
-   - Vercel 環境変数 VITE_ALLOWLIST_JSON_URL に CSV 公開URLを登録
-   - 1行目がヘッダ、メール列は自動検出
+   - Vercel 環境変数 VITE_ALLOWLIST_JSON_URL を優先
+   - 未設定時は固定URLにフォールバック
    ========================================= */
 const ALLOWLIST_CSV =
   import.meta.env.VITE_ALLOWLIST_JSON_URL ||
-  'https://docs.google.com/spreadsheets/d/【ID】/pub?gid=【GID】&single=true&output=csv';
+  'https://docs.google.com/spreadsheets/d/e/2PACX-1vRrohUcfn1aiYyBBopFlUNGknS2obUfvITGi6GyQmHdsAryZeQK6Jil5-ykQmxWh__z3jW0Tj3bl9Ti/pub?gid=494265217&single=true&output=csv';
 
 async function checkAllowList(email: string | null): Promise<boolean> {
   if (!email) return false;
 
+  // ← ここに追加！
+  const DEBUG = false; // trueにすると詳細ログが出る
+
   try {
+    if (DEBUG) console.log('[allowlist] CSV_URL =', ALLOWLIST_CSV);
+    if (DEBUG) console.log('[allowlist] login email =', email);
+
     const res = await fetch(ALLOWLIST_CSV, { cache: 'no-store' });
     if (!res.ok) {
-      console.warn('許可リストの取得に失敗しました', res.status);
+      if (DEBUG) console.warn('許可リストの取得に失敗', res.status);
       return false;
     }
 
-    // BOM除去 + 前後空白除去 + CRLF対応
+    // BOM除去＋整形
     const csv = (await res.text()).replace(/^\uFEFF/, '').trim();
-
-    // CSVを配列に
     const rows = csv
       .split(/\r?\n/)
-      .map(line => line.split(',').map(v => v.trim()))
-      .filter(cols => cols.length >= 1);
+      .map(l => l.split(',').map(s => s.trim()));
 
-    if (rows.length < 2) return false;
-
-    // ヘッダからメール列のインデックスを自動検出（email / mail / メール）
     const header = rows[0].map(h => h.toLowerCase());
     let emailIdx = header.findIndex(h =>
       h.includes('email') || h.includes('mail') || h.includes('メール')
     );
-    if (emailIdx < 0) emailIdx = 1; // なければ2列目を既定
+    if (emailIdx < 0) emailIdx = 1;
 
-    const emails = new Set(
-      rows.slice(1)
-        .map(r => (r[emailIdx] || '').toLowerCase())
-        .filter(Boolean)
-    );
+    const normalize = (s: string) => s.toLowerCase().replace(/[\s"'\u3000]/g, '');
+    const emails = new Set(rows.slice(1).map(r => normalize(r[emailIdx] || '')).filter(Boolean));
 
-    return emails.has(email.toLowerCase());
-  } catch (err) {
-    console.error('checkAllowList エラー:', err);
+    const ok = emails.has(normalize(email));
+
+    // ← ここにも！
+    if (DEBUG) {
+      console.log('[allowlist] parsed emails =', Array.from(emails));
+      console.log('[allowlist] matched =', ok);
+    }
+
+    return ok;
+  } catch (e) {
+    if (DEBUG) console.error('checkAllowList エラー:', e);
     return false;
   }
 }
