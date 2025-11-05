@@ -103,8 +103,13 @@ export default function ClientReport() {
                 <tr>
                   <td className="label">事業所名</td>
                   <td colSpan={3} className="value">ビレッジつばさ</td>
+
                   <td className="label">利用者確認欄</td>
-                  <td colSpan={2} className="value"></td>
+                  <td colSpan={2} className="value">
+                    {/* サイン欄にしたい場合は下を有効化 */}
+                    {/* <div className="sign-box" /> */}
+                  </td>
+
                   <td className="label">ヘルパー名</td>
                   <td className="value">{t.helper_name || '—'}</td>
                 </tr>
@@ -113,6 +118,7 @@ export default function ClientReport() {
                 <tr>
                   <td className="label">利用者名</td>
                   <td colSpan={2} className="value">{t.client_name || '—'}</td>
+
                   <td className="label">日付</td>
                   <td colSpan={5} className="value">{d}</td>
                 </tr>
@@ -135,37 +141,38 @@ export default function ClientReport() {
                 {/* 5) 行先＋主な援助内容＋備考（ベージュ） */}
                 <tr>
                   <td className="sidehead center">記</td>
-                  <td className="beige note-left" colSpan={2}>
-                    {/* 行先・経路メモ欄（必要に応じて） */}
+                  <td className="beige" colSpan={2}>
+                    {/* 行先などを入れたい場合はここに */}
                     {t.destination || '—'}
                   </td>
-                  <td className="beige note-right" colSpan={5}>
-                    <pre className="note">{(r.note_text || '').trim() || '（実績テキスト未入力）'}</pre>
+                  <td className="beige" colSpan={5}>
+                    <pre className="note">{(r.note_text || '').trim() || '（記載なし）'}</pre>
                   </td>
-                  <td className="beige note-memo" colSpan={2}></td>
+                  <td className="beige" colSpan={2}></td>
                 </tr>
 
                 {/* 6) 経路帯 */}
                 <tr className="band thin-top">
                   <td className="sidehead center">録</td>
                   <td className="band-cell center" colSpan={2}>経　路</td>
-                  <td className="band-cell center light" colSpan={7}></td>
+                  <td className="band-cell light" colSpan={7}></td>
                 </tr>
 
-                {/* 7) 経路のチェック（ダミー：見た目だけ） */}
+                {/* 7) 交通手段／余白 */}
                 <tr>
                   <td className="sidehead center">レ</td>
                   <td className="beige center w-veh" colSpan={2}>徒歩</td>
                   <td className="beige center w-veh" colSpan={2}>バス</td>
                   <td className="beige center w-veh" colSpan={2}>電車</td>
-                  <td className="light" colSpan={3}></td>
+                  <td className="light" colSpan={2}></td>
                 </tr>
 
-                {/* 8) フッター（作成日時/ページ番号） */}
+                {/* 8) フッター */}
                 <tr>
                   <td colSpan={9} className="no-border">
                     <div className="report-footer">
-                      記録作成：{dayjs(r.created_at).format('YYYY/MM/DD HH:mm')}（{idx + 1} / {records.length}）
+                      記録作成：{dayjs(r.created_at).format('YYYY/MM/DD HH:mm')}
+                      （{idx + 1} / {records.length}）
                     </div>
                   </td>
                 </tr>
