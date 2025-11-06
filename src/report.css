@@ -41,6 +41,9 @@
   background: #fff;
 }
 
+.report-table col.col-w-100 { width: 100px; }
+.report-table col.col-w-120 { width: 120px; }
+
 .cell {
   padding: 0;
   min-height: 10mm;
@@ -51,12 +54,12 @@
   font-size: 3mm;
   font-weight: 700;
   letter-spacing: .2mm;
-  padding: 1.4mm 2.2mm 0;
+  padding: 1.2mm 2mm 0;
 }
 
 .cell-value {
   display: block;
-  padding: 1.6mm 2.2mm 2.4mm;
+  padding: 1.6mm 2mm 2.2mm;
   font-size: 3.2mm;
   word-break: break-word;
 }
@@ -67,7 +70,7 @@
   justify-content: center;
   text-align: center;
   font-weight: 700;
-  padding: 3mm 2mm;
+  padding: 2.4mm 2mm;
   font-size: 3.2mm;
 }
 
@@ -75,25 +78,76 @@
   padding: 0;
 }
 
+.cell.stack .cell-label {
+  font-size: 3.1mm;
+  letter-spacing: .2mm;
+}
+
+.cell.stack .cell-value {
+  padding: 1.6mm 2mm 2.2mm;
+}
+
+.cell.title {
+  font-size: 4.6mm;
+  font-weight: 700;
+  letter-spacing: .4mm;
+  text-align: center;
+}
+
+.value-only {
+  font-size: 3.3mm;
+  padding: 2mm;
+}
+
+.row-40 .cell {
+  min-height: 40px;
+}
+
+.row-tight .cell {
+  min-height: 32px;
+}
+
+.row-content .cell,
+.row-fill .cell {
+  min-height: 12mm;
+}
+
 .center { text-align: center; }
 .sep { display: inline-block; margin: 0 2mm; }  /* 〜 記号の余白 */
+
+.cell.blank {
+  padding: 0;
+}
+
+.remark-heading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3.2mm;
+}
 
 .note-area {
   padding: 0;
 }
 
+.note-area .destination-field {
+  padding: 2mm 3mm 0;
+  font-size: 3mm;
+  border-bottom: 1px solid #ccc;
+  min-height: 10mm;
+}
+
 .note-area .note {
   margin: 0;
-  padding: 3.2mm 3.6mm;
-  min-height: 65mm;
+  padding: 3mm 3.6mm;
   white-space: pre-wrap;
   font-feature-settings: "palt";
   line-height: 1.85;
+  min-height: 55mm;
 }
 
-.remark-area {
-  padding: 3.2mm 3.6mm;
-  min-height: 65mm;
+.row-fill .cell {
+  border-top: none;
 }
 
 .no-border { border: none !important; }

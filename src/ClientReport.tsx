@@ -98,66 +98,76 @@ export default function ClientReport() {
             <h2 className="report-title">サービス実施記録</h2>
 
             <table className="report-table" cellPadding={0} cellSpacing={0}>
+              <colgroup>
+                <col className="col-w-100" />
+                <col className="col-w-100" />
+                <col className="col-w-120" />
+                <col className="col-w-100" />
+                <col className="col-w-100" />
+                <col className="col-w-120" />
+              </colgroup>
               <tbody>
-                <tr>
-                  <td colSpan={4} className="cell">
-                    <div className="cell-label">事業所名</div>
+                <tr className="row-40 title-row">
+                  <td colSpan={6} className="cell title">サービス実施記録</td>
+                </tr>
+                <tr className="row-tight">
+                  <td colSpan={2} className="cell stack">
+                    <div className="cell-label">事業者名</div>
                     <div className="cell-value">ビレッジつばさ</div>
                   </td>
-                  <td colSpan={4} className="cell">
+                  <td colSpan={2} className="cell stack">
                     <div className="cell-label">利用者確認欄</div>
                     <div className="cell-value" />
                   </td>
-                  <td colSpan={4} className="cell">
+                  <td colSpan={2} className="cell stack">
                     <div className="cell-label">ヘルパー名</div>
                     <div className="cell-value">{t.helper_name || '—'}</div>
                   </td>
                 </tr>
-                <tr>
-                  <td colSpan={7} className="cell">
+                <tr className="row-tight">
+                  <td colSpan={2} className="cell stack">
                     <div className="cell-label">利用者名</div>
                     <div className="cell-value">{t.client_name || '—'}</div>
                   </td>
-                  <td colSpan={5} className="cell">
-                    <div className="cell-label">日付</div>
-                    <div className="cell-value">{d}</div>
-                  </td>
+                  <td className="cell heading">日　付</td>
+                  <td colSpan={3} className="cell value-only">{d}</td>
                 </tr>
-                <tr>
-                  <td colSpan={3} className="cell heading">時間</td>
-                  <td colSpan={9} className="cell">
+                <tr className="row-tight">
+                  <td colSpan={2} className="cell stack">
+                    <div className="cell-label">時間</div>
                     <div className="cell-value center">
                       {t.start_time || '—'} <span className="sep">〜</span> {t.end_time || '—'}
                     </div>
                   </td>
+                  <td colSpan={4} className="cell heading">行　先</td>
                 </tr>
-                <tr>
-                  <td colSpan={3} className="cell heading">行　先</td>
-                  <td colSpan={6} className="cell heading">主な援助内容</td>
-                  <td colSpan={3} className="cell heading">備　考</td>
-                </tr>
-                <tr>
+                <tr className="row-40">
                   <td className="cell heading">記</td>
-                  <td colSpan={2} className="cell">
-                    <div className="cell-value">{t.destination || '—'}</div>
-                  </td>
-                  <td colSpan={6} rowSpan={2} className="cell note-area">
+                  <td className="cell blank" />
+                  <td colSpan={3} className="cell heading">主な援助内容</td>
+                  <td rowSpan={3} className="cell heading remark-heading">備　考</td>
+                </tr>
+                <tr className="row-content">
+                  <td className="cell heading">録</td>
+                  <td className="cell blank" />
+                  <td colSpan={3} rowSpan={2} className="cell note-area">
+                    <div className="destination-field">{t.destination || '—'}</div>
                     <pre className="note">{(r.note_text || '').trim() || '（記載なし）'}</pre>
                   </td>
-                  <td colSpan={3} rowSpan={2} className="cell remark-area" />
+                </tr>
+                <tr className="row-fill">
+                  <td className="cell blank" />
+                  <td className="cell blank" />
+                </tr>
+                <tr className="row-tight">
+                  <td colSpan={2} className="cell heading">経　路</td>
+                  <td className="cell center">徒歩</td>
+                  <td className="cell center">バス</td>
+                  <td className="cell center">電車</td>
+                  <td className="cell blank" />
                 </tr>
                 <tr>
-                  <td className="cell heading">録</td>
-                  <td colSpan={2} className="cell" />
-                </tr>
-                <tr>
-                  <td colSpan={3} className="cell heading">経　路</td>
-                  <td colSpan={3} className="cell center">徒歩</td>
-                  <td colSpan={3} className="cell center">バス</td>
-                  <td colSpan={3} className="cell center">電車</td>
-                </tr>
-                <tr>
-                  <td colSpan={12} className="cell no-border">
+                  <td colSpan={6} className="cell no-border">
                     <div className="report-footer">
                       記録作成：{dayjs(r.created_at).format('YYYY/MM/DD HH:mm')}
                       （{idx + 1} / {records.length}）
