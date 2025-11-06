@@ -31,93 +31,73 @@
 .report-table {
   width: 100%;
   border-collapse: collapse;
-  border: 1px solid #666;
+  border: 1px solid #444;
   table-layout: fixed;       /* 幅を揃える */
 }
 
-.report-table td,
-.report-table th {
-  border: 1px solid #666;
-  padding: 2.2mm 2mm;
+.report-table td {
+  border: 1px solid #444;
   vertical-align: top;
-  word-break: break-word;
   background: #fff;
 }
 
-/* ラベル列（左帯） */
-.report-table .label {
-  background: #eee;
-  width: 18mm;               /* 左のラベル幅を固定 */
-  text-align: center;
-  font-weight: 600;
+.cell {
+  padding: 0;
+  min-height: 10mm;
+  position: relative;
 }
 
-/* セクション帯（行先/主な援助内容/備考、経路など） */
-.band .band-cell {
-  background: #e5e5e5;
+.cell-label {
+  font-size: 3mm;
   font-weight: 700;
-}
-.band.thin-top .band-cell {
-  border-top-width: .5px;
-}
-
-/* 左の「記」「録」セル（全体の左サイド見出し） */
-.sidehead {
-  background: #f0f0f0;
-  font-weight: 700;
-}
-
-/* ベージュの記入欄（本文エリア） */
-.report-table .beige { background: #faf3dd; }
-
-.note-cell {
-  padding: 3mm 3mm 3.5mm;
-}
-
-.note-heading {
-  font-weight: 700;
-  font-size: 3.4mm;
   letter-spacing: .2mm;
-  color: #5c5132;
-  margin: 0 0 1.6mm;
+  padding: 1.4mm 2.2mm 0;
 }
 
-.note-cell .note {
-  border: 1px solid #d7c8a1;
-  border-radius: 1mm;
-  background: rgba(255, 255, 255, 0.92);
-  padding: 2mm 2.5mm;
+.cell-value {
+  display: block;
+  padding: 1.6mm 2.2mm 2.4mm;
+  font-size: 3.2mm;
+  word-break: break-word;
 }
 
-/* 薄色スペース（余白など） */
-.light { background: #fcfcfc; }
-
-/* 値セルの軽い指定 */
-.value { background: #fff; }
-
-/* 本文（主な援助内容）は行間広め・等幅折返し */
-.note {
-  white-space: pre-wrap;
-  font-feature-settings: "palt";
-  line-height: 1.9;
-  margin: 0;
+.cell.heading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-weight: 700;
+  padding: 3mm 2mm;
+  font-size: 3.2mm;
 }
 
-/* 中央寄せ等ユーティリティ */
+.cell.heading .cell-value {
+  padding: 0;
+}
+
 .center { text-align: center; }
-.w-veh { width: 20mm; }      /* 交通手段ボックスの幅 */
 .sep { display: inline-block; margin: 0 2mm; }  /* 〜 記号の余白 */
 
-/* 点線のサイン枠（必要な箇所で class="sign-box" を付与） */
-.sign-box {
-  height: 20mm;
-  border: 1px dashed #aaa;
+.note-area {
+  padding: 0;
 }
 
-/* 罫線を消すセル（フッター内のラップ等で使用） */
+.note-area .note {
+  margin: 0;
+  padding: 3.2mm 3.6mm;
+  min-height: 65mm;
+  white-space: pre-wrap;
+  font-feature-settings: "palt";
+  line-height: 1.85;
+}
+
+.remark-area {
+  padding: 3.2mm 3.6mm;
+  min-height: 65mm;
+}
+
 .no-border { border: none !important; }
 
-/* フッター（作成日時/ページNo） */
 .report-footer {
   margin-top: 3mm;
   color: #444;

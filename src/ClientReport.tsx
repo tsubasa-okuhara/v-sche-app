@@ -99,76 +99,65 @@ export default function ClientReport() {
 
             <table className="report-table" cellPadding={0} cellSpacing={0}>
               <tbody>
-                {/* 1) 上部のラベル行 */}
                 <tr>
-                  <td className="label">事業所名</td>
-                  <td colSpan={3} className="value">ビレッジつばさ</td>
-
-                  <td className="label">利用者確認欄</td>
-                  <td colSpan={2} className="value">
-                    {/* サイン欄にしたい場合は下を有効化 */}
-                    {/* <div className="sign-box" /> */}
+                  <td colSpan={4} className="cell">
+                    <div className="cell-label">事業所名</div>
+                    <div className="cell-value">ビレッジつばさ</div>
                   </td>
-
-                  <td className="label">ヘルパー名</td>
-                  <td className="value">{t.helper_name || '—'}</td>
-                </tr>
-
-                {/* 2) 利用者名／日付 */}
-                <tr>
-                  <td className="label">利用者名</td>
-                  <td colSpan={2} className="value">{t.client_name || '—'}</td>
-
-                  <td className="label">日付</td>
-                  <td colSpan={5} className="value">{d}</td>
-                </tr>
-
-                {/* 3) 時間 */}
-                <tr>
-                  <td className="label">時間</td>
-                  <td colSpan={8} className="value center">
-                    {t.start_time || '—'} <span className="sep">〜</span> {t.end_time || '—'}
+                  <td colSpan={4} className="cell">
+                    <div className="cell-label">利用者確認欄</div>
+                    <div className="cell-value" />
+                  </td>
+                  <td colSpan={4} className="cell">
+                    <div className="cell-label">ヘルパー名</div>
+                    <div className="cell-value">{t.helper_name || '—'}</div>
                   </td>
                 </tr>
-
-                {/* 4) 見出し帯（行先／主な援助内容／備考） */}
-                <tr className="band">
-                  <td className="band-cell center" colSpan={2}>行　先</td>
-                  <td className="band-cell center" colSpan={7}>主な援助内容・備考</td>
-                </tr>
-
-                {/* 5) 行先＋主な援助内容＋備考（ベージュ） */}
                 <tr>
-                  <td className="sidehead center">記</td>
-                  <td className="beige" colSpan={2}>
-                    {/* 行先などを入れたい場合はここに */}
-                    {t.destination || '—'}
+                  <td colSpan={7} className="cell">
+                    <div className="cell-label">利用者名</div>
+                    <div className="cell-value">{t.client_name || '—'}</div>
                   </td>
-                  <td className="beige note-cell" colSpan={6}>
-                    <div className="note-heading">備考</div>
+                  <td colSpan={5} className="cell">
+                    <div className="cell-label">日付</div>
+                    <div className="cell-value">{d}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td colSpan={3} className="cell heading">時間</td>
+                  <td colSpan={9} className="cell">
+                    <div className="cell-value center">
+                      {t.start_time || '—'} <span className="sep">〜</span> {t.end_time || '—'}
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td colSpan={3} className="cell heading">行　先</td>
+                  <td colSpan={6} className="cell heading">主な援助内容</td>
+                  <td colSpan={3} className="cell heading">備　考</td>
+                </tr>
+                <tr>
+                  <td className="cell heading">記</td>
+                  <td colSpan={2} className="cell">
+                    <div className="cell-value">{t.destination || '—'}</div>
+                  </td>
+                  <td colSpan={6} rowSpan={2} className="cell note-area">
                     <pre className="note">{(r.note_text || '').trim() || '（記載なし）'}</pre>
                   </td>
+                  <td colSpan={3} rowSpan={2} className="cell remark-area" />
                 </tr>
-
-                {/* 6) 経路帯 */}
-                <tr className="band thin-top">
-                  <td className="sidehead center">録</td>
-                  <td className="band-cell center" colSpan={2}>経　路</td>
-                  <td className="band-cell light" colSpan={6}></td>
-                </tr>
-
-                {/* 7) 交通手段／余白 */}
                 <tr>
-                  <td className="sidehead center">レ</td>
-                  <td className="beige center w-veh" colSpan={2}>徒歩</td>
-                  <td className="beige center w-veh" colSpan={2}>バス</td>
-                  <td className="beige center w-veh" colSpan={2}>電車</td>
-                  <td className="light" colSpan={2}></td>
+                  <td className="cell heading">録</td>
+                  <td colSpan={2} className="cell" />
                 </tr>
-
-                {/* 8) フッター */}
                 <tr>
-                  <td colSpan={9} className="no-border">
+                  <td colSpan={3} className="cell heading">経　路</td>
+                  <td colSpan={3} className="cell center">徒歩</td>
+                  <td colSpan={3} className="cell center">バス</td>
+                  <td colSpan={3} className="cell center">電車</td>
+                </tr>
+                <tr>
+                  <td colSpan={12} className="cell no-border">
                     <div className="report-footer">
                       記録作成：{dayjs(r.created_at).format('YYYY/MM/DD HH:mm')}
                       （{idx + 1} / {records.length}）
