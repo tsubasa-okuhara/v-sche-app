@@ -134,8 +134,7 @@ export default function ClientReport() {
                 {/* 4) 見出し帯（行先／主な援助内容／備考） */}
                 <tr className="band">
                   <td className="band-cell center" colSpan={2}>行　先</td>
-                  <td className="band-cell center" colSpan={5}>主な援助内容</td>
-                  <td className="band-cell center" colSpan={2}>備　考</td>
+                  <td className="band-cell center" colSpan={7}>主な援助内容・備考</td>
                 </tr>
 
                 {/* 5) 行先＋主な援助内容＋備考（ベージュ） */}
@@ -145,17 +144,17 @@ export default function ClientReport() {
                     {/* 行先などを入れたい場合はここに */}
                     {t.destination || '—'}
                   </td>
-                  <td className="beige" colSpan={5}>
+                  <td className="beige note-cell" colSpan={6}>
+                    <div className="note-heading">備考</div>
                     <pre className="note">{(r.note_text || '').trim() || '（記載なし）'}</pre>
                   </td>
-                  <td className="beige" colSpan={2}></td>
                 </tr>
 
                 {/* 6) 経路帯 */}
                 <tr className="band thin-top">
                   <td className="sidehead center">録</td>
                   <td className="band-cell center" colSpan={2}>経　路</td>
-                  <td className="band-cell light" colSpan={7}></td>
+                  <td className="band-cell light" colSpan={6}></td>
                 </tr>
 
                 {/* 7) 交通手段／余白 */}

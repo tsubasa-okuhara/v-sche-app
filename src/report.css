@@ -70,6 +70,25 @@
 /* ベージュの記入欄（本文エリア） */
 .report-table .beige { background: #faf3dd; }
 
+.note-cell {
+  padding: 3mm 3mm 3.5mm;
+}
+
+.note-heading {
+  font-weight: 700;
+  font-size: 3.4mm;
+  letter-spacing: .2mm;
+  color: #5c5132;
+  margin: 0 0 1.6mm;
+}
+
+.note-cell .note {
+  border: 1px solid #d7c8a1;
+  border-radius: 1mm;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 2mm 2.5mm;
+}
+
 /* 薄色スペース（余白など） */
 .light { background: #fcfcfc; }
 
