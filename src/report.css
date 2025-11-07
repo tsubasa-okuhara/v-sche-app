@@ -107,6 +107,13 @@
   min-height: 32px;
 }
 
+.header-row .cell {
+  font-size: 4.8mm;
+  font-weight: 700;
+  letter-spacing: .4mm;
+  text-align: center;
+}
+
 .row-content .cell,
 .row-fill .cell {
   min-height: 12mm;

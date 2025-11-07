@@ -107,8 +107,8 @@ export default function ClientReport() {
                 <col className="col-w-120" />
               </colgroup>
               <tbody>
-                <tr className="row-40 title-row">
-                  <td colSpan={6} className="cell title">サービス実施記録</td>
+                <tr className="row-40 header-row">
+                  <td colSpan={6} className="cell header-cell">サービス実施記録</td>
                 </tr>
                 <tr className="row-tight">
                   <td colSpan={2} className="cell stack">
