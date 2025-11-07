@@ -142,7 +142,7 @@ export default function ClientReport() {
                   <td colSpan={4} className="cell heading">行　先</td>
                 </tr>
                 <tr className="row-40">
-                  <td className="cell heading">記</td>
+                  <td className="cell blank" />
                   <td className="cell blank" />
                   <td colSpan={3} className="cell heading">主な援助内容</td>
                   <td rowSpan={3} className="cell heading remark-heading">備　考</td>
