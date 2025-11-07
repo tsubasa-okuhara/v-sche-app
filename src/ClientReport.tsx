@@ -147,19 +147,24 @@ export default function ClientReport() {
                 <tr className="row-40">
                   <td className="cell blank" />
                   <td className="cell blank" />
-                  <td colSpan={3} className="cell heading">主な援助内容</td>
-                  <td rowSpan={3} className="cell heading remark-heading">備　考</td>
+                  <td colSpan={4} className="cell heading">主な援助内容</td>
                 </tr>
                 <tr className="row-content">
                   <td className="cell heading">録</td>
                   <td className="cell blank" />
-                  <td colSpan={3} rowSpan={2} className="cell note-area">
+                  <td colSpan={4} className="cell note-area">
                     <pre className="note">{(r.note_text || '').trim() || '（記載なし）'}</pre>
                   </td>
                 </tr>
                 <tr className="row-fill">
                   <td className="cell blank" />
                   <td className="cell blank" />
+                  <td colSpan={4} className="cell heading remark-heading">備　考</td>
+                </tr>
+                <tr className="row-fill">
+                  <td className="cell blank" />
+                  <td className="cell blank" />
+                  <td colSpan={4} className="cell remark-area" />
                 </tr>
                 <tr className="row-tight">
                   <td colSpan={2} className="cell heading">経　路</td>

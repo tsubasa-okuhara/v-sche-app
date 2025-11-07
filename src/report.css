@@ -150,8 +150,8 @@
   min-height: 55mm;
 }
 
-.row-fill .cell {
-  border-top: none;
+.remark-area {
+  min-height: 20mm;
 }
 
 .no-border { border: none !important; }
