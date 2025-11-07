@@ -139,7 +139,10 @@ export default function ClientReport() {
                       {t.start_time || '—'} <span className="sep">〜</span> {t.end_time || '—'}
                     </div>
                   </td>
-                  <td colSpan={4} className="cell heading">行　先</td>
+                  <td className="cell heading">行　先</td>
+                  <td colSpan={3} className="cell destination-cell">
+                    <div className="cell-value">{t.destination || '—'}</div>
+                  </td>
                 </tr>
                 <tr className="row-40">
                   <td className="cell blank" />
@@ -151,7 +154,6 @@ export default function ClientReport() {
                   <td className="cell heading">録</td>
                   <td className="cell blank" />
                   <td colSpan={3} rowSpan={2} className="cell note-area">
-                    <div className="destination-field">{t.destination || '—'}</div>
                     <pre className="note">{(r.note_text || '').trim() || '（記載なし）'}</pre>
                   </td>
                 </tr>

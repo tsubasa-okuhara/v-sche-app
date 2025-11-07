@@ -133,15 +133,12 @@
   font-size: 3.2mm;
 }
 
-.note-area {
-  padding: 0;
+.destination-cell .cell-value {
+  padding: 1.8mm 3mm 2.2mm;
 }
 
-.note-area .destination-field {
-  padding: 2mm 3mm 0;
-  font-size: 3mm;
-  border-bottom: 1px solid #ccc;
-  min-height: 10mm;
+.note-area {
+  padding: 0;
 }
 
 .note-area .note {
