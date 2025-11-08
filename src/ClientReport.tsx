@@ -144,13 +144,10 @@ export default function ClientReport() {
                     <div className="cell-value">{t.destination || '—'}</div>
                   </td>
                 </tr>
-                <tr className="row-40">
-                  <td className="cell blank" />
-                  <td colSpan={5} className="cell heading heading-right">主な援助内容</td>
-                </tr>
-                <tr className="row-content">
+                <tr className="row-content note-row">
                   <td className="cell heading">録</td>
                   <td colSpan={5} className="cell note-area">
+                    <div className="note-label">主な援助内容</div>
                     <pre className="note">{(r.note_text || '').trim() || '（記載なし）'}</pre>
                   </td>
                 </tr>

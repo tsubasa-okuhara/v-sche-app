@@ -78,12 +78,6 @@
   padding: 0;
 }
 
-.cell.heading.heading-right {
-  justify-content: flex-end;
-  text-align: right;
-  padding-right: 6mm;
-}
-
 .cell.stack .cell-label {
   font-size: 3.1mm;
   letter-spacing: .2mm;
@@ -146,15 +140,25 @@
 
 .note-area {
   padding: 0;
+  position: relative;
 }
 
 .note-area .note {
   margin: 0;
-  padding: 3mm 3.6mm;
+  padding: 8mm 3.6mm 3mm;
   white-space: pre-wrap;
   font-feature-settings: "palt";
   line-height: 1.85;
   min-height: 55mm;
+}
+
+.note-label {
+  position: absolute;
+  top: 1.4mm;
+  left: 3mm;
+  font-size: 3.2mm;
+  font-weight: 700;
+  letter-spacing: .2mm;
 }
 
 .remark-area {
