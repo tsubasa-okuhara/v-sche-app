@@ -78,10 +78,10 @@
   padding: 0;
 }
 
-.heading-right {
+.cell.heading.heading-right {
   justify-content: flex-end;
   text-align: right;
-  padding-right: 4mm;
+  padding-right: 6mm;
 }
 
 .cell.stack .cell-label {
