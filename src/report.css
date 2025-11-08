@@ -131,6 +131,7 @@
   align-items: center;
   justify-content: center;
   font-size: 3.2mm;
+  font-weight: 700;
 }
 
 .destination-cell .cell-value {

@@ -157,12 +157,7 @@ export default function ClientReport() {
                   </td>
                 </tr>
                 <tr className="row-fill">
-                  <td className="cell blank" />
-                  <td className="cell blank" />
-                  <td colSpan={4} className="cell heading remark-heading">備　考</td>
-                </tr>
-                <tr className="row-fill">
-                  <td className="cell blank" />
+                  <td className="cell blank remark-heading">備　考</td>
                   <td className="cell blank" />
                   <td colSpan={4} className="cell remark-area" />
                 </tr>
