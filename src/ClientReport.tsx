@@ -147,7 +147,7 @@ export default function ClientReport() {
                 <tr className="row-40">
                   <td className="cell blank" />
                   <td className="cell blank" />
-                  <td colSpan={4} className="cell heading">主な援助内容</td>
+                  <td colSpan={4} className="cell heading heading-right">主な援助内容</td>
                 </tr>
                 <tr className="row-content">
                   <td className="cell heading">録</td>

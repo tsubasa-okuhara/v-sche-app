@@ -78,6 +78,12 @@
   padding: 0;
 }
 
+.heading-right {
+  justify-content: flex-end;
+  text-align: right;
+  padding-right: 4mm;
+}
+
 .cell.stack .cell-label {
   font-size: 3.1mm;
   letter-spacing: .2mm;
