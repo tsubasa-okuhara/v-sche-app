@@ -146,8 +146,8 @@ export default function ClientReport() {
                 </tr>
                 <tr className="row-content note-row">
                   <td className="cell heading">録</td>
-                  <td colSpan={5} className="cell note-area">
-                    <div className="note-label">主な援助内容</div>
+                  <td className="cell note-label-cell">主な援助内容</td>
+                  <td colSpan={4} className="cell note-area">
                     <pre className="note">{(r.note_text || '').trim() || '（記載なし）'}</pre>
                   </td>
                 </tr>

@@ -138,27 +138,25 @@
   padding: 1.8mm 3mm 2.2mm;
 }
 
+.note-label-cell {
+  font-size: 3.2mm;
+  font-weight: 700;
+  letter-spacing: .2mm;
+  text-align: center;
+  vertical-align: middle;
+}
+
 .note-area {
   padding: 0;
-  position: relative;
 }
 
 .note-area .note {
   margin: 0;
-  padding: 8mm 3.6mm 3mm;
+  padding: 3mm 3.6mm;
   white-space: pre-wrap;
   font-feature-settings: "palt";
   line-height: 1.85;
   min-height: 55mm;
-}
-
-.note-label {
-  position: absolute;
-  top: 1.4mm;
-  left: 3mm;
-  font-size: 3.2mm;
-  font-weight: 700;
-  letter-spacing: .2mm;
 }
 
 .remark-area {
