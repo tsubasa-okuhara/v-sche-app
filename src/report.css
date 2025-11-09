@@ -87,7 +87,7 @@
   background: #fff;
   padding: 4mm 2.4mm;
   border-radius: 2mm;
-  border: 1px solid #c2d7b9;
+  border: 0.6px solid #c2d7b9;
 }
 
 .cell.stack .cell-label {
