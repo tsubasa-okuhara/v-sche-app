@@ -78,6 +78,11 @@
   padding: 0;
 }
 
+.vertical-label {
+  writing-mode: vertical-rl;
+  letter-spacing: .4mm;
+}
+
 .cell.stack .cell-label {
   font-size: 3.1mm;
   letter-spacing: .2mm;

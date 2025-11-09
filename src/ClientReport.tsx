@@ -145,7 +145,7 @@ export default function ClientReport() {
                   </td>
                 </tr>
                 <tr className="row-content note-row">
-                  <td className="cell heading">録</td>
+                  <td className="cell heading vertical-label">支援内容の記録</td>
                   <td colSpan={5} className="cell note-area">
                     <pre className="note">{(r.note_text || '').trim() || '（記載なし）'}</pre>
                   </td>
