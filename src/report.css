@@ -81,6 +81,10 @@
 .vertical-label {
   writing-mode: vertical-rl;
   letter-spacing: .4mm;
+  font-size: 3.8mm;
+  justify-content: center;
+  align-items: center;
+  display: flex;
 }
 
 .cell.stack .cell-label {
