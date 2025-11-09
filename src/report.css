@@ -82,11 +82,12 @@
   writing-mode: vertical-rl;
   text-orientation: mixed;
   letter-spacing: .5mm;
-  font-size: 4.4mm;
+  font-size: 5mm;
   font-weight: 700;
   display: flex;
   justify-content: center;
   align-items: center;
+  padding: 0;
 }
 
 .cell.stack .cell-label {
