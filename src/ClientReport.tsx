@@ -95,8 +95,6 @@ export default function ClientReport() {
 
         return (
           <div className="report-sheet" key={r.id}>
-            <h2 className="report-title">サービス実施記録</h2>
-
             <table className="report-table" cellPadding={0} cellSpacing={0}>
               <colgroup>
                 <col className="col-w-100" />
