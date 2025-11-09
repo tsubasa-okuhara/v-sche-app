@@ -186,7 +186,26 @@
 }
 
 @media print {
-  .report-sheet { border: none !important; }
+  .report-page {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .report-sheet {
+    width: calc(100% - 20mm);       /* 左右 10mm の余白を確保 */
+    margin: 0 auto;
+    height: 138.5mm;                /* A4 の印字領域 (約 277mm) を 2 分割 */
+    border: none !important;
+    box-shadow: none;
+    page-break-after: auto;         /* 印刷時は 2 枚ごとに改ページ */
+  }
+
+  .report-sheet:nth-of-type(2n) {
+    page-break-after: always;
+  }
+
   .report-table { border: none !important; }
 
   /* 最外周セルの線を消す（外周が完全に無くなる） */
