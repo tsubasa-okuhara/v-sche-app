@@ -5,7 +5,7 @@
   --page-bg:        #f5f7fa;
   --paper:          #fff;
   --ink:            #111;
-  --grid-outer:     #cc2c24;   /* 外枠（やや強調） */
+  --grid-outer:     #111;   /* 外枠（やや強調） */
   --grid-line:      #7d8085;   /* 罫線（細） */
   --label-bg:       #d9efd2;   /* 縦ラベル帯 */
   --label-chip-bg:  #fff;
