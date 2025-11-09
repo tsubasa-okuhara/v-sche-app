@@ -4,7 +4,7 @@
 :root {
   --page-bg:        #f5f7fa;
   --paper:          #fff;
-  /* --ink:            #111; */
+  --ink:            #111;
   --grid-outer:     #111;   /* 外枠（やや強調） */
   --grid-line:      #5d6168;   /* 罫線（細） */
   --label-bg:       #d9efd2;   /* 縦ラベル帯 */
@@ -186,19 +186,12 @@
 }
 
 @media print {
-  html, body { background: #fff; }
-  .report-page { padding: 0; }
-  .report-sheet {
-    margin: 0 auto;
-    box-shadow: none;
-    border-color: var(--grid-outer);
-  }
-  .report-title { margin-top: 0; }
+  .report-sheet { border: none !important; }
+  .report-table { border: none !important; }
 
-  /* 背景色を印刷に反映（Safari/Chromium） */
-  * {
-    -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-  }
+  /* 最外周セルの線を消す（外周が完全に無くなる） */
+  .report-table tr:first-child td { border-top: none !important; }
+  .report-table tr:last-child  td { border-bottom: none !important; }
+  .report-table td:first-child  { border-left: none !important; }
+  .report-table td:last-child   { border-right: none !important; }
 }
-
