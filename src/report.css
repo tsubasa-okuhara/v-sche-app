@@ -124,7 +124,7 @@
   background: var(--label-chip-bg);
   padding: 4mm 2.4mm;
   border-radius: 2mm;
-  border: var(--border-thin) solid var(--label-chip-br); /* ← 枠を細く */
+  border: 0.5px solid var(--label-chip-br);
 }
 
 /* ---- スタック型の見出し/値 ---- */
@@ -201,3 +201,4 @@
             print-color-adjust: exact;
   }
 }
+
