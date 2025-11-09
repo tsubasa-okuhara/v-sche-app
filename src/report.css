@@ -1,45 +1,70 @@
-/* ===== A4 帳票（紙フォーム風） ===== */
+/* ===== A4 帳票（紙フォーム風・完成版） ===== */
 
+/* ---- 基本トークン ---- */
+:root {
+  --page-bg:        #f5f7fa;
+  --paper:          #fff;
+  --ink:            #111;
+  --grid-outer:     #cc2c24;   /* 外枠（やや強調） */
+  --grid-line:      #7d8085;   /* 罫線（細） */
+  --label-bg:       #d9efd2;   /* 縦ラベル帯 */
+  --label-chip-bg:  #fff;
+  --label-chip-br:  #c2d7b9;
+  --font-family: "Yu Gothic Medium","Hiragino Kaku Gothic ProN",Meiryo,system-ui,sans-serif;
+  --fs-base: 3.3mm; /* 実帳票スケール */
+  --lh-base: 1.55;
+
+  /* 線の太さ（印刷で太く見えがちなので0.6px基準） */
+  --border-thin: 0.6px;
+  --border-outer: 2px;
+}
+
+/* ---- 画面側ベース ---- */
 .report-page {
-  background: #f5f7fa;
+  background: var(--page-bg);
   padding: 12mm 0;
-  color: #111;
-  font-family: "Yu Gothic Medium", "Hiragino Kaku Gothic ProN", Meiryo, system-ui, sans-serif;
-  font-size: 3.3mm;          /* 実帳票に近い縮尺 */
-  line-height: 1.55;
+  color: var(--ink);
+  font-family: var(--font-family);
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
 }
 
 .report-sheet {
-  width: 190mm;              /* A4(210) - 左右10mm */
+  width: 190mm;                    /* A4:210mm - 左右10mm */
   margin: 0 auto 10mm;
-  background: #fff;
-  border: 2px solid #cc2c24;
+  background: var(--paper);
+  border: var(--border-outer) solid var(--grid-outer);
   box-shadow: 0 1mm 2mm rgba(0,0,0,.08);
   padding: 6mm 8mm;
-  page-break-after: always;
+  page-break-after: always;        /* 1ページ/枚 */
 }
 
-/* 罫線のきいた表 */
+/* ---- 表本体 ---- */
 .report-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
-  border: 2px solid #cc2c24;
-  table-layout: fixed;       /* 幅を揃える */
+  border: var(--border-outer) solid var(--grid-outer);  /* 外枠 = 強め */
 }
 
 .report-table td {
-  border: 1px solid #7d8085;
+  background: var(--paper);
   vertical-align: top;
-  background: #fff;
+  border: var(--border-thin) solid var(--grid-line);    /* セル罫線 = 細め */
+  /* 改ページで割れにくくする */
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
+/* 任意幅のカラム */
 .report-table col.col-w-100 { width: 100px; }
 .report-table col.col-w-120 { width: 120px; }
 
+/* ---- 汎用セル ---- */
 .cell {
+  position: relative;
   padding: 0;
   min-height: 10mm;
-  position: relative;
 }
 
 .cell-label {
@@ -65,17 +90,29 @@
   padding: 2.4mm 2mm;
   font-size: 3.2mm;
 }
+.cell.heading .cell-value { padding: 0; }
 
-.cell.heading .cell-value {
-  padding: 0;
-}
+.value-only { font-size: 3.3mm; padding: 2mm; }
 
+.row-40 .cell  { min-height: 40px; }
+.row-tight .cell { min-height: 32px; }
+.row-content .cell,
+.row-fill .cell { min-height: 12mm; }
+
+.center { text-align: center; }
+.sep    { display: inline-block; margin: 0 2mm; } /* 「〜」の余白 */
+.cell.blank { padding: 0; }
+.no-border  { border: none !important; }
+
+/* ---- 縦ラベル（帯＋縦書きチップ）---- */
 .vertical-label {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #d9efd2;
+  background: var(--label-bg);
   padding: 12mm 0;
+  /* 右のセルと重ね罫にならないよう右線を細指定（collapse対策） */
+  border-right-width: var(--border-thin);
 }
 
 .vertical-label-text {
@@ -84,39 +121,22 @@
   letter-spacing: .6mm;
   font-size: 5mm;
   font-weight: 700;
-  background: #fff;
+  background: var(--label-chip-bg);
   padding: 4mm 2.4mm;
   border-radius: 2mm;
-  border: 0.6px solid #c2d7b9;
+  border: var(--border-thin) solid var(--label-chip-br); /* ← 枠を細く */
 }
 
-.cell.stack .cell-label {
-  font-size: 3.1mm;
-  letter-spacing: .2mm;
-}
+/* ---- スタック型の見出し/値 ---- */
+.cell.stack .cell-label { font-size: 3.1mm; letter-spacing: .2mm; }
+.cell.stack .cell-value { padding: 1.6mm 2mm 2.2mm; }
 
-.cell.stack .cell-value {
-  padding: 1.6mm 2mm 2.2mm;
-}
-
+/* ---- タイトル行 ---- */
 .cell.title {
   font-size: 4.6mm;
   font-weight: 700;
   letter-spacing: .4mm;
   text-align: center;
-}
-
-.value-only {
-  font-size: 3.3mm;
-  padding: 2mm;
-}
-
-.row-40 .cell {
-  min-height: 40px;
-}
-
-.row-tight .cell {
-  min-height: 32px;
 }
 
 .header-row .cell {
@@ -126,16 +146,20 @@
   text-align: center;
 }
 
-.row-content .cell,
-.row-fill .cell {
-  min-height: 12mm;
-}
+/* ---- 行先セルだけちょい余白 ---- */
+.destination-cell .cell-value { padding: 1.8mm 3mm 2.2mm; }
 
-.center { text-align: center; }
-.sep { display: inline-block; margin: 0 2mm; }  /* 〜 記号の余白 */
+/* ---- 記録（本文）/備考 ---- */
+.note-area { padding: 0; }           /* 枠と密着させる */
 
-.cell.blank {
-  padding: 0;
+.note-area .note {
+  margin: 0;
+  padding: 3mm 3.6mm;
+  white-space: pre-wrap;
+  font-feature-settings: "palt";
+  line-height: 1.85;
+  min-height: 55mm;
+  break-inside: avoid;
 }
 
 .remark-heading {
@@ -145,30 +169,9 @@
   font-size: 3.2mm;
   font-weight: 700;
 }
+.remark-area { min-height: 20mm; }
 
-.destination-cell .cell-value {
-  padding: 1.8mm 3mm 2.2mm;
-}
-
-.note-area {
-  padding: 0;
-}
-
-.note-area .note {
-  margin: 0;
-  padding: 3mm 3.6mm;
-  white-space: pre-wrap;
-  font-feature-settings: "palt";
-  line-height: 1.85;
-  min-height: 55mm;
-}
-
-.remark-area {
-  min-height: 20mm;
-}
-
-.no-border { border: none !important; }
-
+/* ---- フッター ---- */
 .report-footer {
   margin-top: 3mm;
   color: #444;
@@ -176,13 +179,25 @@
   font-size: 3mm;
 }
 
-/* 印刷調整 */
+/* ---- 印刷最適化 ---- */
+@page {
+  size: A4 portrait;
+  margin: 10mm;                     /* 用紙の物理余白 */
+}
+
 @media print {
-  body { background: #fff; }
+  html, body { background: #fff; }
   .report-page { padding: 0; }
   .report-sheet {
     margin: 0 auto;
     box-shadow: none;
+    border-color: var(--grid-outer);
   }
   .report-title { margin-top: 0; }
+
+  /* 背景色を印刷に反映（Safari/Chromium） */
+  * {
+    -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+  }
 }
