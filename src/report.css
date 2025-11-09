@@ -13,30 +13,22 @@
   width: 190mm;              /* A4(210) - 左右10mm */
   margin: 0 auto 10mm;
   background: #fff;
-  border: 1px solid #666;
+  border: 2px solid #cc2c24;
   box-shadow: 0 1mm 2mm rgba(0,0,0,.08);
   padding: 6mm 8mm;
   page-break-after: always;
-}
-
-.report-title {
-  text-align: left;
-  font-weight: 700;
-  font-size: 5mm;
-  margin: 0 0 4mm;
-  letter-spacing: .2mm;
 }
 
 /* 罫線のきいた表 */
 .report-table {
   width: 100%;
   border-collapse: collapse;
-  border: 1px solid #444;
+  border: 2px solid #cc2c24;
   table-layout: fixed;       /* 幅を揃える */
 }
 
 .report-table td {
-  border: 1px solid #444;
+  border: 1px solid #7d8085;
   vertical-align: top;
   background: #fff;
 }
