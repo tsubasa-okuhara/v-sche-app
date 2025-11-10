@@ -1,6 +1,6 @@
 // src/ClientReport.tsx
-import { getSessionEmail, fetchRecordsByClient } from './lib/api';
-import { useEffect, useState } from 'react';
+import { getSessionEmail, fetchRecordsByClient, fetchClients } from './lib/api';
+import { useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ja';
 
@@ -18,162 +18,345 @@ type ReportRow = {
     helper_name: string;
     destination: string | null;
     helper_email: string | null;
+    weekday_text?: string | null;
   } | null;
 };
 
 // ハッシュクエリを安全に取得
-function getHashParams(): URLSearchParams {
-  const raw = window.location.hash.split('?')[1] || '';
+function getHashParams(hashValue: string): URLSearchParams {
+  const raw = hashValue.split('?')[1] || '';
   return new URLSearchParams(raw);
+}
+
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 export default function ClientReport() {
   const [records, setRecords] = useState<ReportRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string>('');
+  const [hash, setHash] = useState(() => window.location.hash || '#/report');
 
-  // クエリ読み取り（日本語にも対応）
-  const p = getHashParams();
-  const client = decodeURIComponent((p.get('client') || '').trim());
-  const from   = (p.get('from') || '').trim();
-  const to     = (p.get('to')   || '').trim();
+  const [clientOptions, setClientOptions] = useState<string[]>([]);
+  const [clientsLoading, setClientsLoading] = useState(false);
+  const [clientsErr, setClientsErr] = useState('');
 
-  // ▼ ① 許可チェック＋データ取得
+  const params = useMemo(() => getHashParams(hash), [hash]);
+  const rawClient = (params.get('client') || '').trim();
+  const client = rawClient ? safeDecode(rawClient) : '';
+  const from = (params.get('from') || '').trim();
+  const to = (params.get('to') || '').trim();
+
+  const defaultRange = useMemo(() => ({
+    from: dayjs().startOf('month').format('YYYY-MM-DD'),
+    to: dayjs().endOf('month').format('YYYY-MM-DD'),
+  }), []);
+
+  const [clientInput, setClientInput] = useState(() => client);
+  const [fromInput, setFromInput] = useState(() => from || defaultRange.from);
+  const [toInput, setToInput] = useState(() => to || defaultRange.to);
+
   useEffect(() => {
-    (async () => {
-      try {
-        if (!client || !from || !to) {
-          setErr('client / from / to を指定してください');
-          setLoading(false);
-          return;
-        }
-
-        const email = await getSessionEmail();
-        if (!email) {
-          setErr('ログインが必要です（メールのマジックリンクからログインしてください）');
-          setLoading(false);
-          return;
-        }
-
-        const allowed = await checkAllowList(email);
-        if (!allowed) {
-          setErr('閲覧権限がありません（許可リストに登録が必要です）');
-          setLoading(false);
-          return;
-        }
-
-        const list = await fetchRecordsByClient(client, from, to);
-        setRecords(list);
-      } catch (e: any) {
-        setErr(e?.message || '取得に失敗しました');
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [client, from, to]);
-
-  // ▼ ② ハッシュ変更時に再評価（簡易：リロード）
-  useEffect(() => {
-    const onHash = () => location.reload();
+    const onHash = () => setHash(window.location.hash || '#/report');
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
-  if (loading) return <p style={{ padding: '16px' }}>読み込み中…</p>;
-  if (err)     return <p style={{ padding: '16px', color: '#b91c1c' }}>{err}</p>;
-  if (records.length === 0) return <p style={{ padding: '16px' }}>該当データがありません。</p>;
+  useEffect(() => {
+    setClientInput(client);
+    setFromInput(from || defaultRange.from);
+    setToInput(to || defaultRange.to);
+  }, [client, from, to, defaultRange]);
+
+  useEffect(() => {
+    let active = true;
+    const loadClients = async () => {
+      setClientsLoading(true);
+      setClientsErr('');
+      try {
+        const list = await fetchClients();
+        if (!active) return;
+        setClientOptions(list);
+      } catch (e: any) {
+        if (!active) return;
+        setClientsErr(e?.message || '利用者一覧の取得に失敗しました。');
+      } finally {
+        if (active) setClientsLoading(false);
+      }
+    };
+    loadClients();
+    return () => { active = false; };
+  }, []);
+
+  const clientList = useMemo(() => {
+    const pool = new Set(clientOptions);
+    if (client) pool.add(client);
+    return Array.from(pool).sort((a, b) => a.localeCompare(b, 'ja'));
+  }, [clientOptions, client]);
+
+  const filteredClients = useMemo(() => {
+    const keyword = clientInput.trim();
+    if (!keyword) return clientList;
+    return clientList.filter(name => name.includes(keyword));
+  }, [clientList, clientInput]);
+
+  useEffect(() => {
+    let active = true;
+
+    const load = async () => {
+      if (!client || !from || !to) {
+        if (active) {
+          setRecords([]);
+          setLoading(false);
+          setErr('');
+        }
+        return;
+      }
+
+      setLoading(true);
+      setErr('');
+      try {
+        const email = await getSessionEmail();
+        if (!active) return;
+
+        if (!email) {
+          setErr('ログインが必要です（メールのマジックリンクからログインしてください）');
+          setRecords([]);
+          return;
+        }
+
+        const allowed = await checkAllowList(email);
+        if (!active) return;
+
+        if (!allowed) {
+          setErr('閲覧権限がありません（許可リストに登録が必要です）');
+          setRecords([]);
+          return;
+        }
+
+        const list = await fetchRecordsByClient(client, from, to);
+        if (!active) return;
+        setRecords(list);
+      } catch (e: any) {
+        if (!active) return;
+        setErr(e?.message || '取得に失敗しました');
+        setRecords([]);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    load();
+    return () => { active = false; };
+  }, [client, from, to]);
+
+  const applyFilter = () => {
+    const selectedClient = clientInput.trim();
+    if (!selectedClient || !fromInput || !toInput) return;
+
+    if (dayjs(fromInput).isAfter(dayjs(toInput))) {
+      alert('開始日は終了日より前の日付を選択してください。');
+      return;
+    }
+
+    const nextHash = `#/report?client=${encodeURIComponent(selectedClient)}&from=${fromInput}&to=${toInput}`;
+    if (window.location.hash === nextHash) {
+      return;
+    }
+
+    setRecords([]);
+    setErr('');
+    setLoading(true);
+    window.location.hash = nextHash;
+  };
+
+  const hasSelection = Boolean(client && from && to);
+  const showRecords = !loading && !err && records.length > 0;
 
   return (
-    <div className="report-page">
-      {records.map((r, idx) => {
-        const t = r.schedule_tasks;
-        if (!t) return null;
+    <div className="report-screen">
+      <div className="report-filter">
+        <div className="report-filter-row">
+          <label>
+            利用者名
+            <div className="report-filter-input">
+              <input
+                type="search"
+                value={clientInput}
+                onChange={(e) => setClientInput(e.target.value)}
+                placeholder="利用者名を入力または選択"
+              />
+              {clientInput && (
+                <button
+                  type="button"
+                  className="report-filter-clear"
+                  onClick={() => setClientInput('')}
+                >
+                  クリア
+                </button>
+              )}
+            </div>
+          </label>
+          <label>
+            期間（開始）
+            <input
+              type="date"
+              value={fromInput}
+              onChange={(e) => setFromInput(e.target.value)}
+            />
+          </label>
+          <label>
+            期間（終了）
+            <input
+              type="date"
+              value={toInput}
+              onChange={(e) => setToInput(e.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className="report-filter-submit"
+            onClick={applyFilter}
+            disabled={!clientInput.trim() || !fromInput || !toInput}
+          >
+            表示
+          </button>
+        </div>
 
-        const d = dayjs(t.task_date).isValid()
-          ? dayjs(t.task_date).format('YYYY年M月D日（ddd）')
-          : (t.task_date || '—');
+        <div className="report-filter-clients">
+          {clientsLoading && <p className="report-filter-note">利用者一覧を読み込み中…</p>}
+          {!clientsLoading && clientsErr && (
+            <p className="report-filter-note error">{clientsErr}</p>
+          )}
+          {!clientsLoading && !clientsErr && filteredClients.length === 0 && (
+            <p className="report-filter-note">該当する利用者が見つかりません。</p>
+          )}
+          {!clientsLoading && !clientsErr && filteredClients.length > 0 && (
+            <div className="report-filter-client-list">
+              {filteredClients.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  className={`client-option${name === clientInput.trim() ? ' selected' : ''}`}
+                  onClick={() => setClientInput(name)}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
 
-        return (
-          <div className="report-sheet" key={r.id}>
-            <table className="report-table" cellPadding={0} cellSpacing={0}>
-              <colgroup>
-                <col className="col-w-100" />
-                <col className="col-w-100" />
-                <col className="col-w-120" />
-                <col className="col-w-100" />
-                <col className="col-w-100" />
-                <col className="col-w-120" />
-              </colgroup>
-              <tbody>
-                <tr className="row-40 header-row">
-                  <td colSpan={6} className="cell header-cell">サービス実施記録</td>
-                </tr>
-                <tr className="row-tight">
-                  <td colSpan={2} className="cell stack">
-                    <div className="cell-label">事業者名</div>
-                    <div className="cell-value">ビレッジつばさ</div>
-                  </td>
-                  <td colSpan={2} className="cell stack">
-                    <div className="cell-label">利用者確認欄</div>
-                    <div className="cell-value" />
-                  </td>
-                  <td colSpan={2} className="cell stack">
-                    <div className="cell-label">ヘルパー名</div>
-                    <div className="cell-value">{t.helper_name || '—'}</div>
-                  </td>
-                </tr>
-                <tr className="row-tight">
-                  <td colSpan={2} className="cell stack">
-                    <div className="cell-label">利用者名</div>
-                    <div className="cell-value">{t.client_name || '—'}</div>
-                  </td>
-                  <td className="cell heading">日　付</td>
-                  <td colSpan={3} className="cell value-only">{d}</td>
-                </tr>
-                <tr className="row-tight">
-                  <td colSpan={2} className="cell stack">
-                    <div className="cell-label">時間</div>
-                    <div className="cell-value center">
-                      {t.start_time || '—'} <span className="sep">〜</span> {t.end_time || '—'}
-                    </div>
-                  </td>
-                  <td className="cell heading">行　先</td>
-                  <td colSpan={3} className="cell destination-cell">
-                    <div className="cell-value">{t.destination || '—'}</div>
-                  </td>
-                </tr>
-                <tr className="row-content note-row">
-                  <td className="cell vertical-label">
-                    <span className="vertical-label-text">支援内容の記録</span>
-                  </td>
-                  <td colSpan={5} className="cell note-area">
-                    <pre className="note">{(r.note_text || '').trim() || '（記載なし）'}</pre>
-                  </td>
-                </tr>
-                <tr className="row-fill">
-                  <td className="cell blank remark-heading">備　考</td>
-                  <td colSpan={5} className="cell remark-area" />
-                </tr>
-                <tr className="row-tight">
-                  <td colSpan={2} className="cell heading">経　路</td>
-                  <td className="cell center">徒歩</td>
-                  <td className="cell center">バス</td>
-                  <td className="cell center">電車</td>
-                  <td className="cell blank" />
-                </tr>
-                <tr>
-                  <td colSpan={6} className="cell no-border">
-                    <div className="report-footer">
-                      記録作成：{dayjs(r.created_at).format('YYYY/MM/DD HH:mm')}
-                      （{idx + 1} / {records.length}）
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        );
-      })}
+      {loading && <p className="report-status">読み込み中…</p>}
+      {!loading && err && <p className="report-status error">{err}</p>}
+      {!loading && !err && !hasSelection && (
+        <p className="report-status">利用者と表示期間を選択してください。</p>
+      )}
+      {!loading && !err && hasSelection && records.length === 0 && (
+        <p className="report-status">該当データがありません。</p>
+      )}
+
+      {showRecords && (
+        <div className="report-page">
+          {records.map((r, idx) => {
+            const t = r.schedule_tasks;
+            if (!t) return null;
+
+            const weekday = t.weekday_text ?? (dayjs(t.task_date).isValid() ? dayjs(t.task_date).format('ddd') : '');
+            const baseDate = dayjs(t.task_date).isValid()
+              ? dayjs(t.task_date).format('YYYY年M月D日')
+              : (t.task_date || '—');
+            const d = weekday ? `${baseDate}（${weekday}）` : baseDate;
+
+            return (
+              <div className="report-sheet" key={r.id}>
+                <table className="report-table" cellPadding={0} cellSpacing={0}>
+                  <colgroup>
+                    <col className="col-w-100" />
+                    <col className="col-w-100" />
+                    <col className="col-w-120" />
+                    <col className="col-w-100" />
+                    <col className="col-w-100" />
+                    <col className="col-w-120" />
+                  </colgroup>
+                  <tbody>
+                    <tr className="row-40 header-row">
+                      <td colSpan={6} className="cell header-cell">サービス実施記録</td>
+                    </tr>
+                    <tr className="row-tight">
+                      <td colSpan={2} className="cell stack">
+                        <div className="cell-label">事業者名</div>
+                        <div className="cell-value">ビレッジつばさ</div>
+                      </td>
+                      <td colSpan={2} className="cell stack">
+                        <div className="cell-label">利用者確認欄</div>
+                        <div className="cell-value" />
+                      </td>
+                      <td colSpan={2} className="cell stack">
+                        <div className="cell-label">ヘルパー名</div>
+                        <div className="cell-value">{t.helper_name || '—'}</div>
+                      </td>
+                    </tr>
+                    <tr className="row-tight">
+                      <td colSpan={2} className="cell stack">
+                        <div className="cell-label">利用者名</div>
+                        <div className="cell-value">{t.client_name || '—'}</div>
+                      </td>
+                      <td className="cell heading">日　付</td>
+                      <td colSpan={3} className="cell value-only">{d}</td>
+                    </tr>
+                    <tr className="row-tight">
+                      <td colSpan={2} className="cell stack">
+                        <div className="cell-label">時間</div>
+                        <div className="cell-value center">
+                          {t.start_time || '—'} <span className="sep">〜</span> {t.end_time || '—'}
+                        </div>
+                      </td>
+                      <td className="cell heading">行　先</td>
+                      <td colSpan={3} className="cell destination-cell">
+                        <div className="cell-value">{t.destination || '—'}</div>
+                      </td>
+                    </tr>
+                    <tr className="row-content note-row">
+                      <td className="cell vertical-label">
+                        <span className="vertical-label-text">支援内容の記録</span>
+                      </td>
+                      <td colSpan={5} className="cell note-area">
+                        <pre className="note">{(r.note_text || '').trim() || '（記載なし）'}</pre>
+                      </td>
+                    </tr>
+                    <tr className="row-fill">
+                      <td className="cell blank remark-heading">備　考</td>
+                      <td colSpan={5} className="cell remark-area" />
+                    </tr>
+                    <tr className="row-tight">
+                      <td colSpan={2} className="cell heading">経　路</td>
+                      <td className="cell center">徒歩</td>
+                      <td className="cell center">バス</td>
+                      <td className="cell center">電車</td>
+                      <td className="cell blank" />
+                    </tr>
+                    <tr>
+                      <td colSpan={6} className="cell no-border">
+                        <div className="report-footer">
+                          記録作成：{dayjs(r.created_at).format('YYYY/MM/DD HH:mm')}
+                          （{idx + 1} / {records.length}）
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

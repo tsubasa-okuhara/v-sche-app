@@ -13,6 +13,7 @@ export type ScheduleTask = {
   end_time: string;
   destination: string | null;
   status: string;
+  weekday_text?: string | null;
 };
 
 export type PendingNote = {
@@ -28,6 +29,7 @@ export type PendingNote = {
     end_time: string;
     destination: string | null;
     helper_email: string | null;
+    weekday_text?: string | null;
   } | null;
 };
 
@@ -43,6 +45,7 @@ export type ServiceRecord = {
     helper_name: string;
     destination: string | null;
     helper_email: string | null;
+    weekday_text?: string | null;
   } | null;
 };
 
@@ -319,6 +322,7 @@ export async function fetchRecordsByClient(
     helper_name: string;
     destination: string | null;
     helper_email: string | null;
+    weekday_text?: string | null;
   } | null;
 }>> {
   let q = supabase
@@ -359,6 +363,7 @@ export async function fetchRecordsByClient(
       helper_name: string;
       destination: string | null;
       helper_email: string | null;
+      weekday_text?: string | null;
     } | null;
   }>;
 }
