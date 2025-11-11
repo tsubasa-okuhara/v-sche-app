@@ -7,6 +7,13 @@ import {
   submitNote,
   signInMagicLink,   // ← 追加
 } from './lib/api';
+import ServiceNoteForm from './components/ServiceNoteForm';
+import type { NoteFormState, StoredAnswers } from './lib/noteForm';
+import {
+  serializeAnswers,
+  restoreFormState,
+  hasFormContent,
+} from './lib/noteForm';
 
 type EditorTask = {
   noteId?: string;
@@ -14,6 +21,7 @@ type EditorTask = {
   title: string;
   when: string;
   dest?: string | null;
+  answers?: StoredAnswers | null;
 };
 
 /* ログインフォーム（マジックリンク） */
@@ -58,13 +66,26 @@ function Login({ onConfirmed }: { onConfirmed: () => void | Promise<void> }) {
 
 /* 記録入力モーダル */
 function Editor({ task, onClose }: { task: EditorTask; onClose: () => void }) {
-  const [memo, setMemo] = useState('');
+  const initialForm = useMemo(() =>
+    restoreFormState(task.answers, { destination: task.dest || '' }),
+    [task.noteId, task.taskId, task.dest, task.answers]
+  );
+  const [form, setForm] = useState<NoteFormState>(initialForm);
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => {
+    setForm(initialForm);
+  }, [initialForm]);
+
   const send = async () => {
+    if (!hasFormContent(form)) {
+      alert('チェック項目または実績メモを入力してください');
+      return;
+    }
     setBusy(true);
     try {
-      await submitNote(task.taskId, { actual: memo.trim() }); // upsert → AI整形
+      const answers = serializeAnswers(form);
+      await submitNote(task.taskId, answers); // upsert → AI整形
       alert('送信しました。ありがとうございます！');
       onClose();
     } catch (e: any) {
@@ -76,13 +97,16 @@ function Editor({ task, onClose }: { task: EditorTask; onClose: () => void }) {
 
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.35)'}}>
-      <div style={{background:'#fff',maxWidth:560,margin:'40px auto',padding:16,borderRadius:12}}>
+      <div style={{background:'#fff',maxWidth:560,margin:'40px auto',padding:16,borderRadius:12,maxHeight:'80vh',overflowY:'auto'}}>
         <h3>{task.title} / {task.when}</h3>
-        <div style={{color:'#666',marginBottom:8}}>予定：{task.dest || '—'}</div>
-        <label>実績メモ（短くOK）</label>
-        <textarea rows={4} value={memo} onChange={e=>setMemo(e.target.value)} style={{width:'100%'}} />
-        <div style={{display:'flex',gap:8,marginTop:12}}>
-          <button onClick={send} disabled={busy}
+        <div style={{color:'#666',marginBottom:8}}>予定：{form.destination || task.dest || '—'}</div>
+        <ServiceNoteForm
+          value={form}
+          onChange={setForm}
+          disabled={busy}
+        />
+        <div style={{display:'flex',gap:8,marginTop:16}}>
+          <button onClick={send} disabled={busy || !hasFormContent(form)}
             style={{padding:'10px 14px', background:'#16a34a', color:'#fff', border:0, borderRadius:8}}>送 信</button>
           <button onClick={onClose} style={{padding:'10px 14px'}}>閉じる</button>
         </div>
@@ -136,19 +160,25 @@ export default function AppPending() {
             const t = n.schedule_tasks;
             const title = `${t?.client_name ?? '—'} / ${t?.helper_name ?? '—'}`;
             const when = `${t?.task_date ?? ''} ${t?.start_time ?? ''}〜${t?.end_time ?? ''}`;
+            const draftMemo = n.answers?.form?.memo || n.answers?.actual || '';
+            const customDest = typeof n.answers?.form?.destination === 'string' && n.answers.form.destination.trim()
+              ? n.answers.form.destination.trim()
+              : '';
+            const shownDest = customDest || t?.destination || '—';
             return (
               <div key={n.id} style={{border:'1px solid #e5e7eb',borderRadius:12,padding:12}}>
                 <div style={{fontWeight:600}}>{title}</div>
                 <div style={{color:'#666'}}>{when}</div>
-                <div style={{color:'#666'}}>予定：{t?.destination ?? '—'}</div>
-                <div style={{color:'#999',margin:'6px 0'}}>下書き：{(n.answers?.actual ?? '').slice(0,60)}</div>
+                <div style={{color:'#666'}}>予定：{shownDest}</div>
+                <div style={{color:'#999',margin:'6px 0'}}>下書き：{draftMemo ? draftMemo.slice(0, 60) : '（未入力）'}</div>
                 <button
                   onClick={()=> setEditing({
                     noteId: n.id,
                     taskId: n.task_id,
                     title,
                     when,
-                    dest: t?.destination ?? ''
+                    dest: shownDest,
+                    answers: n.answers as StoredAnswers | null,
                   })}
                   style={{padding:'6px 10px',border:'1px solid #d1d5db',borderRadius:8}}
                 >

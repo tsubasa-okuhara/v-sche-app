@@ -9,6 +9,14 @@ import {
   todayISO,
   fetchNoteText,
 } from './lib/api';
+import ServiceNoteForm from './components/ServiceNoteForm';
+import type { NoteFormState } from './lib/noteForm';
+import {
+  createDefaultFormState,
+  hasFormContent,
+  applyExpressionRules,
+  serializeAnswers,
+} from './lib/noteForm';
 
 /* ---------------- Login ---------------- */
 function Login({ onConfirmed }: { onConfirmed: () => void | Promise<void> }) {
@@ -47,9 +55,21 @@ function Login({ onConfirmed }: { onConfirmed: () => void | Promise<void> }) {
 
 /* ---------------- Editor ---------------- */
 function Editor({ task, onClose }: { task: any; onClose: () => void }) {
-  const [memo, setMemo] = useState('');
+  const initialForm = useMemo(() => {
+    const base = createDefaultFormState();
+    base.destination = applyExpressionRules(task.destination || '');
+    return base;
+  }, [task.id, task.destination]);
+
+  const [form, setForm] = useState<NoteFormState>(initialForm);
   const [phase, setPhase] = useState<'idle' | 'saving' | 'formatting' | 'done' | 'error'>('idle');
   const [preview, setPreview] = useState('');
+
+  useEffect(() => {
+    setForm(initialForm);
+    setPhase('idle');
+    setPreview('');
+  }, [initialForm]);
 
   // note_text を待つ（ポーリング）
   const waitForNoteText = async (noteId: string, timeoutMs = 20000, intervalMs = 800) => {
@@ -63,17 +83,18 @@ function Editor({ task, onClose }: { task: any; onClose: () => void }) {
   };
 
   const send = async () => {
-    if (!memo.trim()) {
-      alert('実績メモを入力してください');
+    if (!hasFormContent(form)) {
+      alert('チェック項目または実績メモを入力してください');
       return;
     }
     try {
       setPhase('saving');
-      const noteId = await submitNote(task.id, { actual: memo.trim() }); // upsert → AI実行（api.ts で done まで）
+      const answers = serializeAnswers(form);
+      const noteId = await submitNote(task.id, answers); // upsert → AI実行（api.ts で done まで）
 
       setPhase('formatting');
       const text = await waitForNoteText(noteId); // 整形文を取得
-      setPreview(text);
+      setPreview(applyExpressionRules((text || '').trim()));
       setPhase('done');
     } catch (e: any) {
       setPhase('error');
@@ -81,9 +102,9 @@ function Editor({ task, onClose }: { task: any; onClose: () => void }) {
     }
   };
 
-  const Btn = ({ label }: { label: string }) => (
+  const Btn = ({ label, disabled }: { label: string; disabled?: boolean }) => (
     <button
-      disabled={phase === 'saving' || phase === 'formatting'}
+      disabled={disabled || phase === 'saving' || phase === 'formatting'}
       onClick={send}
       style={{
         padding: '10px 14px',
@@ -101,21 +122,34 @@ function Editor({ task, onClose }: { task: any; onClose: () => void }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)' }}>
-      <div style={{ background: '#fff', maxWidth: 560, margin: '40px auto', padding: 16, borderRadius: 12 }}>
+      <div
+        style={{
+          background: '#fff',
+          maxWidth: 560,
+          margin: '40px auto',
+          padding: 16,
+          borderRadius: 12,
+          maxHeight: '80vh',
+          overflowY: 'auto',
+        }}
+      >
         <h3>{task.client_name} / {task.task_date}</h3>
-        <div style={{ color: '#666' }}>{task.start_time}〜{task.end_time} / {task.destination || '—'}</div>
+        <div style={{ color: '#666' }}>{task.start_time}〜{task.end_time} / {form.destination || task.destination || '—'}</div>
 
         {phase !== 'done' && (
           <>
-            <label>実績メモ（短くOK）</label>
-            <textarea rows={4} value={memo} onChange={(e) => setMemo(e.target.value)} style={{ width: '100%', marginTop: 12 }} />
-            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <Btn label="送信" />
+            <ServiceNoteForm
+              value={form}
+              onChange={setForm}
+              disabled={phase === 'saving' || phase === 'formatting'}
+            />
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <Btn label="送信" disabled={!hasFormContent(form)} />
               <button onClick={onClose} style={{ padding: '10px 14px' }}>閉じる</button>
             </div>
             {phase !== 'idle' && (
               <p style={{ color: '#666', marginTop: 8 }}>
-                {phase === 'saving' && '保存中…（service_notes に記録を保存）'}
+                {phase === 'saving' && '保存中…（チェック内容を保存しています）'}
                 {phase === 'formatting' && 'AI整形中…（数秒かかることがあります）'}
                 {phase === 'error' && 'エラーが発生しました'}
               </p>
@@ -203,4 +237,3 @@ export default function AppTasks() {
     </div>
   );
 }
-

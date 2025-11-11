@@ -1,0 +1,71 @@
+.note-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.note-form-section h4 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.note-form-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.note-form-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.note-form-chip.checked {
+  border-color: #2563eb;
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.note-form-chip input {
+  margin: 0;
+}
+
+.note-form-subgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.note-form-subtitle {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.note-form textarea {
+  width: 100%;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  resize: vertical;
+}
+
+.note-form textarea:disabled,
+.note-form input:disabled {
+  background: #f3f4f6;
+}
+
+.note-form input[type="text"] {
+  width: 100%;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  font-size: 14px;
+  box-sizing: border-box;
+}

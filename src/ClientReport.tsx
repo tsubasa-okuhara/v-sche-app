@@ -3,6 +3,8 @@ import { getSessionEmail, fetchRecordsByClient, fetchClients } from './lib/api';
 import { useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ja';
+import { applyExpressionRules } from './lib/noteForm';
+import type { StoredAnswers } from './lib/noteForm';
 
 dayjs.locale('ja');
 
@@ -10,6 +12,7 @@ type ReportRow = {
   id: string;
   note_text: string | null;
   created_at: string;
+  answers: StoredAnswers | null;
   schedule_tasks: {
     task_date: string;
     start_time: string;
@@ -273,6 +276,12 @@ export default function ClientReport() {
               ? dayjs(t.task_date).format('YYYY年M月D日')
               : (t.task_date || '—');
             const d = weekday ? `${baseDate}（${weekday}）` : baseDate;
+            const rawNote = (r.note_text || '').trim();
+            const safeNote = rawNote ? applyExpressionRules(rawNote) : '';
+            const customDestination = typeof r.answers?.form?.destination === 'string' && r.answers.form.destination.trim()
+              ? applyExpressionRules(r.answers.form.destination.trim())
+              : '';
+            const destinationDisplay = customDestination || t.destination || '—';
 
             return (
               <div className="report-sheet" key={r.id}>
@@ -320,7 +329,7 @@ export default function ClientReport() {
                       </td>
                       <td className="cell heading">行　先</td>
                       <td colSpan={3} className="cell destination-cell">
-                        <div className="cell-value">{t.destination || '—'}</div>
+                        <div className="cell-value">{destinationDisplay}</div>
                       </td>
                     </tr>
                     <tr className="row-content note-row">
@@ -328,7 +337,7 @@ export default function ClientReport() {
                         <span className="vertical-label-text">支援内容の記録</span>
                       </td>
                       <td colSpan={5} className="cell note-area">
-                        <pre className="note">{(r.note_text || '').trim() || '（記載なし）'}</pre>
+                        <pre className="note">{safeNote || '（記載なし）'}</pre>
                       </td>
                     </tr>
                     <tr className="row-fill">

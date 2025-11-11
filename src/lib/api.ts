@@ -1,5 +1,6 @@
 import dayjs from 'dayjs';
 import { supabase } from './supabase';
+import type { StoredAnswers } from './noteForm';
 
 /* ========= 型 ========= */
 
@@ -37,6 +38,7 @@ export type ServiceRecord = {
   id: string;
   note_text: string;
   created_at: string;
+  answers: StoredAnswers | null;
   schedule_tasks: {
     task_date: string;
     start_time: string;
@@ -259,7 +261,7 @@ export async function fetchMyRecords(email: string, from?: string, to?: string) 
   let q = supabase
     .from('service_notes')
     .select(`
-      id, note_text, created_at,
+      id, note_text, created_at, answers,
       schedule_tasks (
         task_date, start_time, end_time, client_name, helper_name, destination, helper_email
       )
@@ -284,6 +286,7 @@ export async function fetchMyRecords(email: string, from?: string, to?: string) 
     schedule_tasks: Array.isArray(row.schedule_tasks)
       ? (row.schedule_tasks[0] ?? null)
       : row.schedule_tasks ?? null,
+    answers: row.answers ?? null,
   }));
 
   return normalized;
@@ -314,6 +317,7 @@ export async function fetchRecordsByClient(
   id: string;
   note_text: string | null;
   created_at: string;
+  answers: StoredAnswers | null;
   schedule_tasks: {
     task_date: string;
     start_time: string;
@@ -328,7 +332,7 @@ export async function fetchRecordsByClient(
   let q = supabase
     .from('service_notes')
     .select(`
-      id, note_text, created_at,
+      id, note_text, created_at, answers,
       schedule_tasks (
         task_date, start_time, end_time, client_name, helper_name, destination, helper_email
       )
@@ -349,12 +353,14 @@ export async function fetchRecordsByClient(
     schedule_tasks: Array.isArray(row.schedule_tasks)
       ? (row.schedule_tasks[0] ?? null)
       : row.schedule_tasks ?? null,
+    answers: row.answers ?? null,
   }));
 
   return normalized as Array<{
     id: string;
     note_text: string | null;
     created_at: string;
+    answers: StoredAnswers | null;
     schedule_tasks: {
       task_date: string;
       start_time: string;

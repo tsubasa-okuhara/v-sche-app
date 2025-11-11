@@ -1,6 +1,7 @@
 // src/pages/Records.tsx
 import { useEffect, useMemo, useState } from 'react';
 import { getSessionEmail, fetchMyRecords, todayISO } from '../lib/api';
+import { applyExpressionRules } from '../lib/noteForm';
 import '../style-records.css';
 
 type Shaped = ReturnType<typeof shapeRecord>;
@@ -15,6 +16,9 @@ function getHashParams() {
 
 function shapeRecord(r: any) {
   const t = r?.schedule_tasks ?? {};
+  const overrideDestination = typeof r?.answers?.form?.destination === 'string' && r.answers.form.destination.trim()
+    ? r.answers.form.destination.trim()
+    : '';
   return {
     id: String(r?.id || ''),
     note_text: String(r?.note_text || ''),
@@ -25,6 +29,7 @@ function shapeRecord(r: any) {
     client_name: String(t?.client_name || ''),
     helper_name: String(t?.helper_name || ''),
     destination: String(t?.destination || ''),
+    destination_override: overrideDestination,
   };
 }
 
@@ -166,11 +171,14 @@ export default function Records() {
                     <span className="client">{r.client_name || '（利用者不明）'}</span>
                     <span className="time">{r.start_time}〜{r.end_time}</span>
                   </div>
-                  {r.destination && <div className="dest">〔{r.destination}〕</div>}
+                  {(() => {
+                    const dest = (r.destination_override || r.destination || '').trim();
+                    return dest ? <div className="dest">〔{applyExpressionRules(dest)}〕</div> : null;
+                  })()}
                 </header>
 
                 <section className="record-body">
-                  <pre className="note">{r.note_text}</pre>
+                  <pre className="note">{applyExpressionRules((r.note_text || '').trim())}</pre>
                 </section>
 
                 <footer className="record-footer">
