@@ -10,13 +10,18 @@ import {
   fetchNoteText,
 } from './lib/api';
 import ServiceNoteForm from './components/ServiceNoteForm';
-import type { NoteFormState } from './lib/noteForm';
 import {
-  createDefaultFormState,
   hasFormContent,
   applyExpressionRules,
   serializeAnswers,
 } from './lib/noteForm';
+import ServiceNoteChat from './components/ServiceNoteChat';
+import {
+  createEmptyServiceNoteFields,
+  cloneServiceNoteFields,
+  serviceNoteFieldsToNoteForm,
+} from './lib/serviceNoteSchema';
+import type { ServiceNoteFields } from './lib/serviceNoteSchema';
 
 /* ---------------- Login ---------------- */
 function Login({ onConfirmed }: { onConfirmed: () => void | Promise<void> }) {
@@ -56,19 +61,21 @@ function Login({ onConfirmed }: { onConfirmed: () => void | Promise<void> }) {
 /* ---------------- Editor ---------------- */
 function Editor({ task, onClose }: { task: any; onClose: () => void }) {
   const initialForm = useMemo(() => {
-    const base = createDefaultFormState();
+    const base = createEmptyServiceNoteFields();
     base.destination = applyExpressionRules(task.destination || '');
     return base;
   }, [task.id, task.destination]);
 
-  const [form, setForm] = useState<NoteFormState>(initialForm);
+  const [form, setForm] = useState<ServiceNoteFields>(initialForm);
   const [phase, setPhase] = useState<'idle' | 'saving' | 'formatting' | 'done' | 'error'>('idle');
   const [preview, setPreview] = useState('');
+  const [chatOpen, setChatOpen] = useState(false);
 
   useEffect(() => {
     setForm(initialForm);
     setPhase('idle');
     setPreview('');
+    setChatOpen(false);
   }, [initialForm]);
 
   // note_text を待つ（ポーリング）
@@ -83,13 +90,15 @@ function Editor({ task, onClose }: { task: any; onClose: () => void }) {
   };
 
   const send = async () => {
-    if (!hasFormContent(form)) {
+    const formState = serviceNoteFieldsToNoteForm(form);
+
+    if (!hasFormContent(formState)) {
       alert('チェック項目または実績メモを入力してください');
       return;
     }
     try {
       setPhase('saving');
-      const answers = serializeAnswers(form);
+      const answers = serializeAnswers(formState);
       const noteId = await submitNote(task.id, answers); // upsert → AI実行（api.ts で done まで）
 
       setPhase('formatting');
@@ -138,13 +147,32 @@ function Editor({ task, onClose }: { task: any; onClose: () => void }) {
 
         {phase !== 'done' && (
           <>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+              <button
+                type="button"
+                onClick={() => setChatOpen(true)}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  border: '1px solid #60a5fa',
+                  background: '#dbeafe',
+                  color: '#1d4ed8',
+                  fontWeight: 600,
+                }}
+              >
+                🗣 会話で入力
+              </button>
+            </div>
             <ServiceNoteForm
               value={form}
-              onChange={setForm}
+              onChange={(next) => setForm(cloneServiceNoteFields(next))}
               disabled={phase === 'saving' || phase === 'formatting'}
             />
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-              <Btn label="送信" disabled={!hasFormContent(form)} />
+              <Btn
+                label="送信"
+                disabled={!hasFormContent(serviceNoteFieldsToNoteForm(form))}
+              />
               <button onClick={onClose} style={{ padding: '10px 14px' }}>閉じる</button>
             </div>
             {phase !== 'idle' && (
@@ -167,6 +195,67 @@ function Editor({ task, onClose }: { task: any; onClose: () => void }) {
               <button onClick={onClose} style={{ padding: '10px 14px' }}>閉じる</button>
             </div>
           </>
+        )}
+        {chatOpen && (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(17, 24, 39, 0.85)',
+              display: 'flex',
+              alignItems: 'stretch',
+              justifyContent: 'center',
+              padding: '16px',
+              zIndex: 50,
+            }}
+          >
+            <div
+              style={{
+                background: '#fff',
+                width: 'min(640px, 100%)',
+                maxHeight: '100%',
+                borderRadius: 16,
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  padding: '16px 20px',
+                  borderBottom: '1px solid #e5e7eb',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 600 }}>会話モード</div>
+                  <div style={{ fontSize: 13, color: '#6b7280' }}>
+                    質問に答えるだけでフォームに反映されます。
+                  </div>
+                </div>
+                <button
+                  onClick={() => setChatOpen(false)}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #d1d5db',
+                    background: '#fff',
+                  }}
+                >
+                  閉じる
+                </button>
+              </div>
+              <div style={{ flex: 1, overflow: 'auto' }}>
+                <ServiceNoteChat
+                  value={form}
+                  onChange={(next) => setForm(cloneServiceNoteFields(next))}
+                />
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

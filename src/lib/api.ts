@@ -1,6 +1,8 @@
 import dayjs from 'dayjs';
 import { supabase } from './supabase';
 import type { StoredAnswers } from './noteForm';
+import type { StepId } from './conversationSteps';
+import type { ServiceNoteFields } from './serviceNoteSchema';
 
 /* ========= 型 ========= */
 
@@ -372,4 +374,29 @@ export async function fetchRecordsByClient(
       weekday_text?: string | null;
     } | null;
   }>;
+}
+
+/** 会話モードの回答を解析してフォームを更新 */
+export async function parseServiceNoteStep(
+  stepId: StepId,
+  answer: string,
+  current: ServiceNoteFields
+): Promise<ServiceNoteFields> {
+  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/parse-service-note-step`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+    },
+    body: JSON.stringify({ stepId, answer, current }),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`会話入力の解析に失敗しました (${res.status}): ${detail}`);
+  }
+  const data = await res.json();
+  return data as ServiceNoteFields;
 }

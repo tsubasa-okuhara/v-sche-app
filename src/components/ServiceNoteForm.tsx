@@ -8,79 +8,41 @@ import {
   TOILET_OPTIONS,
   applyExpressionRules,
 } from '../lib/noteForm';
-import type { NoteFormState } from '../lib/noteForm';
+import type { ServiceNoteFields } from '../lib/serviceNoteSchema';
 import '../note-form.css';
 
 type Props = {
-  value: NoteFormState;
-  onChange: (next: NoteFormState) => void;
+  value: ServiceNoteFields;
+  onChange: (next: ServiceNoteFields) => void;
   disabled?: boolean;
 };
 
 export function ServiceNoteForm({ value, onChange, disabled }: Props) {
-  const update = <K extends keyof NoteFormState>(key: K, updater: (prev: NoteFormState[K]) => NoteFormState[K]) => {
-    onChange({ ...value, [key]: updater(value[key]) });
-  };
-
-  const toggle = (key: keyof NoteFormState, id: string) => {
-    update(key, (prev) => {
-      const arr = Array.isArray(prev) ? prev.slice() : [];
-      const idx = arr.indexOf(id);
-      if (idx >= 0) arr.splice(idx, 1);
-      else arr.push(id);
-      return arr as NoteFormState[typeof key];
+  const toggleCondition = (id: string) => {
+    onChange({
+      ...value,
+      condition: {
+        ...value.condition,
+        [id]: !value.condition[id as keyof typeof value.condition],
+      },
     });
   };
 
-  const radio = (key: keyof NoteFormState, id: string) => {
-    onChange({ ...value, [key]: value[key] === id ? '' as NoteFormState[typeof key] : (id as NoteFormState[typeof key]) });
+  const toggleToilet = (id: string) => {
+    onChange({
+      ...value,
+      toilet: {
+        ...value.toilet,
+        [id]: !value.toilet[id as keyof typeof value.toilet],
+      },
+    });
   };
 
-  const renderCheckboxGroup = (title: string, key: keyof NoteFormState, options: readonly { id: string; label: string }[]) => (
-    <section className="note-form-section">
-      <h4>{title}</h4>
-      <div className="note-form-options">
-        {options.map((opt) => {
-          const arr = Array.isArray(value[key]) ? (value[key] as string[]) : [];
-          const checked = arr.includes(opt.id);
-          return (
-            <label key={opt.id} className={`note-form-chip${checked ? ' checked' : ''}`}>
-              <input
-                type="checkbox"
-                checked={checked}
-                disabled={disabled}
-                onChange={() => toggle(key, opt.id)}
-              />
-              <span>{opt.label}</span>
-            </label>
-          );
-        })}
-      </div>
-    </section>
-  );
-
-  const renderRadioGroup = (title: string, key: keyof NoteFormState, options: readonly { id: string; label: string }[]) => (
-    <section className="note-form-section">
-      <h4>{title}</h4>
-      <div className="note-form-options">
-        {options.map((opt) => {
-          const checked = value[key] === opt.id;
-          return (
-            <label key={opt.id} className={`note-form-chip${checked ? ' checked' : ''}`}>
-              <input
-                type="radio"
-                name={key as string}
-                checked={checked}
-                disabled={disabled}
-                onChange={() => radio(key, opt.id)}
-              />
-              <span>{opt.label}</span>
-            </label>
-          );
-        })}
-      </div>
-    </section>
-  );
+  const toggleRadio = (key: keyof ServiceNoteFields, id: string) => {
+    const current = value[key];
+    const nextValue = current === id ? null : (id as ServiceNoteFields[typeof key]);
+    onChange({ ...value, [key]: nextValue });
+  };
 
   return (
     <div className="note-form">
@@ -90,13 +52,74 @@ export function ServiceNoteForm({ value, onChange, disabled }: Props) {
           type="text"
           value={value.destination}
           disabled={disabled}
-          onChange={(e) => onChange({ ...value, destination: applyExpressionRules(e.target.value) })}
+          onChange={(e) =>
+            onChange({ ...value, destination: applyExpressionRules(e.target.value) })
+          }
           placeholder="例）自宅 → まごめ園"
         />
       </section>
-      {renderCheckboxGroup('① その時の状態・様子', 'condition', CONDITION_OPTIONS)}
-      {renderCheckboxGroup('② トイレ・排泄状況', 'toilet', TOILET_OPTIONS)}
-      {renderRadioGroup('気分・表情', 'mood', MOOD_OPTIONS)}
+
+      <section className="note-form-section">
+        <h4>① その時の状態・様子</h4>
+        <div className="note-form-options">
+          {CONDITION_OPTIONS.map((opt) => {
+            const checked = Boolean(value.condition[opt.id as keyof typeof value.condition]);
+            return (
+              <label key={opt.id} className={`note-form-chip${checked ? ' checked' : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={disabled}
+                  onChange={() => toggleCondition(opt.id)}
+                />
+                <span>{opt.label}</span>
+              </label>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="note-form-section">
+        <h4>② トイレ・排泄状況</h4>
+        <div className="note-form-options">
+          {TOILET_OPTIONS.map((opt) => {
+            const checked = Boolean(value.toilet[opt.id as keyof typeof value.toilet]);
+            return (
+              <label key={opt.id} className={`note-form-chip${checked ? ' checked' : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={disabled}
+                  onChange={() => toggleToilet(opt.id)}
+                />
+                <span>{opt.label}</span>
+              </label>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="note-form-section">
+        <h4>気分・表情</h4>
+        <div className="note-form-options">
+          {MOOD_OPTIONS.map((opt) => {
+            const checked = value.mood === opt.id;
+            return (
+              <label key={opt.id} className={`note-form-chip${checked ? ' checked' : ''}`}>
+                <input
+                  type="radio"
+                  name="mood"
+                  checked={checked}
+                  disabled={disabled}
+                  onChange={() => toggleRadio('mood', opt.id)}
+                />
+                <span>{opt.label}</span>
+              </label>
+            );
+          })}
+        </div>
+      </section>
+
       <section className="note-form-section">
         <h4>食事・水分摂取</h4>
         <div className="note-form-subgrid">
@@ -112,7 +135,7 @@ export function ServiceNoteForm({ value, onChange, disabled }: Props) {
                       name="mealFood"
                       checked={checked}
                       disabled={disabled}
-                      onChange={() => radio('mealFood', opt.id)}
+                      onChange={() => toggleRadio('mealFood', opt.id)}
                     />
                     <span>{opt.label}</span>
                   </label>
@@ -132,7 +155,7 @@ export function ServiceNoteForm({ value, onChange, disabled }: Props) {
                       name="mealWater"
                       checked={checked}
                       disabled={disabled}
-                      onChange={() => radio('mealWater', opt.id)}
+                      onChange={() => toggleRadio('mealWater', opt.id)}
                     />
                     <span>{opt.label}</span>
                   </label>
@@ -142,8 +165,49 @@ export function ServiceNoteForm({ value, onChange, disabled }: Props) {
           </div>
         </div>
       </section>
-      {renderRadioGroup('服薬', 'medication', MEDICATION_OPTIONS)}
-      {renderRadioGroup('家族・他職員との交流', 'interaction', INTERACTION_OPTIONS)}
+
+      <section className="note-form-section">
+        <h4>服薬</h4>
+        <div className="note-form-options">
+          {MEDICATION_OPTIONS.map((opt) => {
+            const checked = value.medication === opt.id;
+            return (
+              <label key={opt.id} className={`note-form-chip${checked ? ' checked' : ''}`}>
+                <input
+                  type="radio"
+                  name="medication"
+                  checked={checked}
+                  disabled={disabled}
+                  onChange={() => toggleRadio('medication', opt.id)}
+                />
+                <span>{opt.label}</span>
+              </label>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="note-form-section">
+        <h4>家族・他職員との交流</h4>
+        <div className="note-form-options">
+          {INTERACTION_OPTIONS.map((opt) => {
+            const checked = value.interaction === opt.id;
+            return (
+              <label key={opt.id} className={`note-form-chip${checked ? ' checked' : ''}`}>
+                <input
+                  type="radio"
+                  name="interaction"
+                  checked={checked}
+                  disabled={disabled}
+                  onChange={() => toggleRadio('interaction', opt.id)}
+                />
+                <span>{opt.label}</span>
+              </label>
+            );
+          })}
+        </div>
+      </section>
+
       <section className="note-form-section">
         <h4>実績メモ（短くてOK）</h4>
         <textarea

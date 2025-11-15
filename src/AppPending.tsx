@@ -8,12 +8,18 @@ import {
   signInMagicLink,   // ← 追加
 } from './lib/api';
 import ServiceNoteForm from './components/ServiceNoteForm';
-import type { NoteFormState, StoredAnswers } from './lib/noteForm';
+import type { StoredAnswers } from './lib/noteForm';
 import {
   serializeAnswers,
   restoreFormState,
   hasFormContent,
 } from './lib/noteForm';
+import {
+  serviceNoteFieldsFromNoteForm,
+  serviceNoteFieldsToNoteForm,
+  cloneServiceNoteFields,
+} from './lib/serviceNoteSchema';
+import type { ServiceNoteFields } from './lib/serviceNoteSchema';
 
 type EditorTask = {
   noteId?: string;
@@ -66,11 +72,13 @@ function Login({ onConfirmed }: { onConfirmed: () => void | Promise<void> }) {
 
 /* 記録入力モーダル */
 function Editor({ task, onClose }: { task: EditorTask; onClose: () => void }) {
-  const initialForm = useMemo(() =>
-    restoreFormState(task.answers, { destination: task.dest || '' }),
+  const initialForm = useMemo(
+    () => serviceNoteFieldsFromNoteForm(
+      restoreFormState(task.answers, { destination: task.dest || '' })
+    ),
     [task.noteId, task.taskId, task.dest, task.answers]
   );
-  const [form, setForm] = useState<NoteFormState>(initialForm);
+  const [form, setForm] = useState<ServiceNoteFields>(initialForm);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -78,13 +86,13 @@ function Editor({ task, onClose }: { task: EditorTask; onClose: () => void }) {
   }, [initialForm]);
 
   const send = async () => {
-    if (!hasFormContent(form)) {
+    if (!hasFormContent(serviceNoteFieldsToNoteForm(form))) {
       alert('チェック項目または実績メモを入力してください');
       return;
     }
     setBusy(true);
     try {
-      const answers = serializeAnswers(form);
+      const answers = serializeAnswers(serviceNoteFieldsToNoteForm(form));
       await submitNote(task.taskId, answers); // upsert → AI整形
       alert('送信しました。ありがとうございます！');
       onClose();
@@ -102,11 +110,11 @@ function Editor({ task, onClose }: { task: EditorTask; onClose: () => void }) {
         <div style={{color:'#666',marginBottom:8}}>予定：{form.destination || task.dest || '—'}</div>
         <ServiceNoteForm
           value={form}
-          onChange={setForm}
+          onChange={(next) => setForm(cloneServiceNoteFields(next))}
           disabled={busy}
         />
         <div style={{display:'flex',gap:8,marginTop:16}}>
-          <button onClick={send} disabled={busy || !hasFormContent(form)}
+          <button onClick={send} disabled={busy || !hasFormContent(serviceNoteFieldsToNoteForm(form))}
             style={{padding:'10px 14px', background:'#16a34a', color:'#fff', border:0, borderRadius:8}}>送 信</button>
           <button onClick={onClose} style={{padding:'10px 14px'}}>閉じる</button>
         </div>
