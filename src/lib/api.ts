@@ -61,16 +61,28 @@ export async function signInMagicLink(email: string) {
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      // 現在のURLごと（#/report?...含む）を保持して戻す
-      emailRedirectTo: window.location.href,
+      // ハッシュ(#/...)を含めず、ホスト名＋プロトコルだけにする
+      emailRedirectTo: window.location.origin, 
+      // 例: https://v-sche-app.vercel.app
     },
   });
   if (error) throw error;
 }
 
-export async function getSessionEmail() {
-  const { data: { user } } = await supabase.auth.getUser();
-  return user?.email ?? null;
+export async function getSessionEmail(): Promise<string | null> {
+  const { data, error } = await supabase.auth.getUser();
+
+  console.log('getSessionEmail user:', data?.user);
+  console.log('getSessionEmail error:', error);
+
+  if (error) {
+    console.error('getSessionEmail error:', error);
+    return null;
+  }
+
+  const email = data.user?.email ?? null;
+  console.log('getSessionEmail email:', email);
+  return email;
 }
 
 /* ========= 予定の取得 ========= */
@@ -377,11 +389,16 @@ export async function fetchRecordsByClient(
 }
 
 /** 会話モードの回答を解析してフォームを更新 */
+export type ParseServiceNoteStepResult = {
+  fields: ServiceNoteFields;
+  summary: string;
+};
+
 export async function parseServiceNoteStep(
   stepId: StepId,
   answer: string,
   current: ServiceNoteFields
-): Promise<ServiceNoteFields> {
+): Promise<ParseServiceNoteStepResult> {
   const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/parse-service-note-step`;
   const res = await fetch(url, {
     method: 'POST',
@@ -398,5 +415,6 @@ export async function parseServiceNoteStep(
     throw new Error(`会話入力の解析に失敗しました (${res.status}): ${detail}`);
   }
   const data = await res.json();
-  return data as ServiceNoteFields;
+  return data as ParseServiceNoteStepResult;
 }
+ 

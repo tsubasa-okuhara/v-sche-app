@@ -1,30 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { parseServiceNoteStep } from '../lib/api';
-import { serviceNoteSteps } from '../lib/conversationSteps';
 import type { ServiceNoteFields } from '../lib/serviceNoteSchema';
 import { cloneServiceNoteFields } from '../lib/serviceNoteSchema';
-
-type HistoryMessage = { from: 'system' | 'user'; text: string };
+import { useConversationNote } from '../lib/useConversationNote';
 
 type Props = {
   value: ServiceNoteFields;
   onChange: (next: ServiceNoteFields) => void;
+  onComplete?: (result: { fields: ServiceNoteFields; summary: string }) => void;
+  onClose?: () => void;
 };
 
-export default function ServiceNoteChat({ value, onChange }: Props) {
-  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+export default function ServiceNoteChat({ value, onChange, onComplete, onClose }: Props) {
   const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [history, setHistory] = useState<HistoryMessage[]>([]);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const conversationFinished = currentStepIndex >= serviceNoteSteps.length;
-
-  useEffect(() => {
-    setHistory([{ from: 'system', text: serviceNoteSteps[0].prompt }]);
-    setCurrentStepIndex(0);
-  }, []);
+  const {
+    history,
+    loading,
+    isFinished,
+    summary,
+    currentFields,
+    currentStep,
+    sendAnswer,
+  } = useConversationNote(value);
 
   useEffect(() => {
     const el = listRef.current;
@@ -33,51 +32,43 @@ export default function ServiceNoteChat({ value, onChange }: Props) {
     }
   }, [history]);
 
+  useEffect(() => {
+    onChange(cloneServiceNoteFields(currentFields));
+  }, [currentFields, onChange]);
+
   const handleSend = async () => {
     const trimmed = input.trim();
-    if (!trimmed || loading || conversationFinished) return;
-
-    const step = serviceNoteSteps[currentStepIndex];
-    if (!step) return;
-
-    setHistory((prev) => [...prev, { from: 'user', text: trimmed }]);
+    if (!trimmed || loading || isFinished) return;
     setInput('');
-    setLoading(true);
+    await sendAnswer(trimmed);
+  };
 
-    try {
-      const updated = await parseServiceNoteStep(step.id, trimmed, value);
-      onChange(cloneServiceNoteFields(updated));
-
-      const nextIndex = currentStepIndex + 1;
-      const additions: HistoryMessage[] = [
-        { from: 'system', text: '入力を反映しました。' },
-      ];
-      if (nextIndex < serviceNoteSteps.length) {
-        additions.push({ from: 'system', text: serviceNoteSteps[nextIndex].prompt });
-      } else {
-        additions.push({
-          from: 'system',
-          text: '会話モードは終了しました。この内容で記録を作成してください。',
-        });
-      }
-      setHistory((prev) => [...prev, ...additions]);
-      setCurrentStepIndex(nextIndex);
-    } catch (error: any) {
-      const message =
-        error?.message ||
-        '解析に失敗しました。もう一度入力するか、フォームに戻って修正してください。';
-      setHistory((prev) => [
-        ...prev,
-        { from: 'system', text: `⚠️ ${message}` },
-      ]);
-    } finally {
-      setLoading(false);
-    }
+  const handleComplete = () => {
+    if (!isFinished) return;
+    onComplete?.({
+      fields: cloneServiceNoteFields(currentFields),
+      summary,
+    });
+    onClose?.();
   };
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    handleSend();
+    if (isFinished) {
+      handleComplete();
+    } else {
+      handleSend();
+    }
+  };
+
+  const renderPromptHint = () => {
+    if (!currentStep || isFinished) return null;
+    return (
+      <div style={{ fontSize: 13, color: '#4b5563', lineHeight: 1.5 }}>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>{currentStep.prompt}</div>
+        {currentStep.hint && <div style={{ color: '#6b7280' }}>{currentStep.hint}</div>}
+      </div>
+    );
   };
 
   return (
@@ -122,7 +113,7 @@ export default function ServiceNoteChat({ value, onChange }: Props) {
             </div>
           );
         })}
-        {conversationFinished && (
+        {isFinished && (
           <div
             style={{
               alignSelf: 'center',
@@ -132,6 +123,22 @@ export default function ServiceNoteChat({ value, onChange }: Props) {
             }}
           >
             追加で修正したい場合はフォームで直接編集できます。
+          </div>
+        )}
+        {summary && (
+          <div
+            style={{
+              marginTop: 12,
+              padding: '12px 14px',
+              borderRadius: 12,
+              background: '#ecfccb',
+              color: '#3f6212',
+              fontSize: 14,
+              lineHeight: 1.6,
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>AI要約</div>
+            <div style={{ whiteSpace: 'pre-wrap' }}>{summary}</div>
           </div>
         )}
       </div>
@@ -147,13 +154,14 @@ export default function ServiceNoteChat({ value, onChange }: Props) {
           gap: '12px',
         }}
       >
+        {renderPromptHint()}
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          disabled={loading || conversationFinished}
+          disabled={loading || isFinished}
           rows={4}
           placeholder={
-            conversationFinished
+            isFinished
               ? '全ての質問が完了しました。フォームで最終確認してください。'
               : 'ここに回答を入力してください。'
           }
@@ -165,12 +173,12 @@ export default function ServiceNoteChat({ value, onChange }: Props) {
             padding: '12px',
             fontSize: 15,
             lineHeight: 1.6,
-            background: conversationFinished ? '#f3f4f6' : '#fff',
+            background: isFinished ? '#f3f4f6' : '#fff',
           }}
         />
         <button
           type="submit"
-          disabled={loading || conversationFinished || !input.trim()}
+          disabled={loading || (!isFinished && !input.trim())}
           style={{
             width: '100%',
             padding: '14px',
@@ -183,7 +191,7 @@ export default function ServiceNoteChat({ value, onChange }: Props) {
             letterSpacing: 0.3,
           }}
         >
-          {loading ? '解析中…' : conversationFinished ? '完了しました' : '送信'}
+          {loading ? '解析中…' : isFinished ? '完了しました' : '送信'}
         </button>
       </form>
     </div>

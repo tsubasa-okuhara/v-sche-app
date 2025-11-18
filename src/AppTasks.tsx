@@ -70,12 +70,14 @@ function Editor({ task, onClose }: { task: any; onClose: () => void }) {
   const [phase, setPhase] = useState<'idle' | 'saving' | 'formatting' | 'done' | 'error'>('idle');
   const [preview, setPreview] = useState('');
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatSummary, setChatSummary] = useState('');
 
   useEffect(() => {
     setForm(initialForm);
     setPhase('idle');
     setPreview('');
     setChatOpen(false);
+    setChatSummary('');
   }, [initialForm]);
 
   // note_text を待つ（ポーリング）
@@ -168,6 +170,21 @@ function Editor({ task, onClose }: { task: any; onClose: () => void }) {
               onChange={(next) => setForm(cloneServiceNoteFields(next))}
               disabled={phase === 'saving' || phase === 'formatting'}
             />
+            {chatSummary && (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: 12,
+                  borderRadius: 12,
+                  background: '#ecfccb',
+                  color: '#3f6212',
+                  whiteSpace: 'pre-wrap',
+                }}
+              >
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>AI要約（会話入力）</div>
+                {chatSummary}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
               <Btn
                 label="送信"
@@ -252,6 +269,11 @@ function Editor({ task, onClose }: { task: any; onClose: () => void }) {
                 <ServiceNoteChat
                   value={form}
                   onChange={(next) => setForm(cloneServiceNoteFields(next))}
+                  onComplete={({ fields, summary }) => {
+                    setForm(cloneServiceNoteFields(fields));
+                    setChatSummary(summary);
+                  }}
+                  onClose={() => setChatOpen(false)}
                 />
               </div>
             </div>
