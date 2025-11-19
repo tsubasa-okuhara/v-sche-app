@@ -309,8 +309,47 @@ export default function AppTasks() {
 
   useEffect(() => { load(); }, []);
 
-  if (!email) return <Login onConfirmed={load} />;
+  if (!email) {
+    const devEmail = 'village.tsubasa.4499@gmail.com'; // あなたの普段使っているメール
 
+    return (
+      <>
+        <Login onConfirmed={load} />
+        {/* 🔧 開発用：メール認証をスキップして予定一覧に入るボタン */}
+        <div style={{ maxWidth: 720, margin: '16px auto', padding: '8px' }}>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                setLoading(true);
+                // 開発用：強制的に email をセット
+                setEmail(devEmail);
+                // そのメールに紐づくタスク一覧を取得
+                const list = await fetchTasksByEmail(devEmail);
+                setTasks(list);
+              } catch (e: any) {
+                alert(e.message || '開発用ログインに失敗しました');
+              } finally {
+                setLoading(false);
+              }
+            }}
+            style={{
+              marginTop: 8,
+              padding: '8px 12px',
+              borderRadius: 8,
+              border: '1px solid #f97316',
+              background: '#ffedd5',
+              color: '#9a3412',
+              fontSize: 13,
+            }}
+          >
+            🔧 開発用：メール認証をスキップして予定一覧に入る
+          </button>
+        </div>
+      </>
+    );
+  }
+  
   return (
     <div style={{ maxWidth: 720, margin: '16px auto', padding: '12px' }}>
       <h2>自分の予定一覧（{dateISO}）</h2>
@@ -348,3 +387,5 @@ export default function AppTasks() {
     </div>
   );
 }
+
+useEffect(() => { load(); },
