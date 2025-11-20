@@ -51,8 +51,12 @@ function Login({ onConfirmed }: { onConfirmed: () => void | Promise<void> }) {
         style={{ width: '100%', padding: 12, fontSize: 16 }}
       />
       <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-        <button onClick={send} disabled={busy} style={{ padding: '10px 14px' }}>マジックリンク送信</button>
-        <button onClick={onConfirmed} style={{ padding: '10px 14px' }}>ログイン済みを確認</button>
+        <button onClick={send} disabled={busy} style={{ padding: '10px 14px' }}>
+          マジックリンク送信
+        </button>
+        <button onClick={onConfirmed} style={{ padding: '10px 14px' }}>
+          ログイン済みを確認
+        </button>
       </div>
     </div>
   );
@@ -67,7 +71,8 @@ function Editor({ task, onClose }: { task: any; onClose: () => void }) {
   }, [task.id, task.destination]);
 
   const [form, setForm] = useState<ServiceNoteFields>(initialForm);
-  const [phase, setPhase] = useState<'idle' | 'saving' | 'formatting' | 'done' | 'error'>('idle');
+  const [phase, setPhase] =
+    useState<'idle' | 'saving' | 'formatting' | 'done' | 'error'>('idle');
   const [preview, setPreview] = useState('');
   const [chatOpen, setChatOpen] = useState(false);
   const [chatSummary, setChatSummary] = useState('');
@@ -81,7 +86,11 @@ function Editor({ task, onClose }: { task: any; onClose: () => void }) {
   }, [initialForm]);
 
   // note_text を待つ（ポーリング）
-  const waitForNoteText = async (noteId: string, timeoutMs = 20000, intervalMs = 800) => {
+  const waitForNoteText = async (
+    noteId: string,
+    timeoutMs = 20000,
+    intervalMs = 800,
+  ) => {
     const end = Date.now() + timeoutMs;
     while (Date.now() < end) {
       const txt = await fetchNoteText(noteId);
@@ -101,7 +110,7 @@ function Editor({ task, onClose }: { task: any; onClose: () => void }) {
     try {
       setPhase('saving');
       const answers = serializeAnswers(formState);
-      const noteId = await submitNote(task.id, answers); // upsert → AI実行（api.ts で done まで）
+      const noteId = await submitNote(task.id, answers); // upsert → AI実行
 
       setPhase('formatting');
       const text = await waitForNoteText(noteId); // 整形文を取得
@@ -119,7 +128,8 @@ function Editor({ task, onClose }: { task: any; onClose: () => void }) {
       onClick={send}
       style={{
         padding: '10px 14px',
-        background: phase === 'saving' || phase === 'formatting' ? '#9ca3af' : '#16a34a',
+        background:
+          phase === 'saving' || phase === 'formatting' ? '#9ca3af' : '#16a34a',
         color: '#fff',
         border: 0,
         borderRadius: 8,
@@ -144,12 +154,23 @@ function Editor({ task, onClose }: { task: any; onClose: () => void }) {
           overflowY: 'auto',
         }}
       >
-        <h3>{task.client_name} / {task.task_date}</h3>
-        <div style={{ color: '#666' }}>{task.start_time}〜{task.end_time} / {form.destination || task.destination || '—'}</div>
+        <h3>
+          {task.client_name} / {task.task_date}
+        </h3>
+        <div style={{ color: '#666' }}>
+          {task.start_time}〜{task.end_time} /{' '}
+          {form.destination || task.destination || '—'}
+        </div>
 
         {phase !== 'done' && (
           <>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                marginBottom: 12,
+              }}
+            >
               <button
                 type="button"
                 onClick={() => setChatOpen(true)}
@@ -181,7 +202,9 @@ function Editor({ task, onClose }: { task: any; onClose: () => void }) {
                   whiteSpace: 'pre-wrap',
                 }}
               >
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>AI要約（会話入力）</div>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                  AI要約（会話入力）
+                </div>
                 {chatSummary}
               </div>
             )}
@@ -190,12 +213,19 @@ function Editor({ task, onClose }: { task: any; onClose: () => void }) {
                 label="送信"
                 disabled={!hasFormContent(serviceNoteFieldsToNoteForm(form))}
               />
-              <button onClick={onClose} style={{ padding: '10px 14px' }}>閉じる</button>
+              <button
+                onClick={onClose}
+                style={{ padding: '10px 14px' }}
+              >
+                閉じる
+              </button>
             </div>
             {phase !== 'idle' && (
               <p style={{ color: '#666', marginTop: 8 }}>
-                {phase === 'saving' && '保存中…（チェック内容を保存しています）'}
-                {phase === 'formatting' && 'AI整形中…（数秒かかることがあります）'}
+                {phase === 'saving' &&
+                  '保存中…（チェック内容を保存しています）'}
+                {phase === 'formatting' &&
+                  'AI整形中…（数秒かかることがあります）'}
                 {phase === 'error' && 'エラーが発生しました'}
               </p>
             )}
@@ -205,14 +235,28 @@ function Editor({ task, onClose }: { task: any; onClose: () => void }) {
         {phase === 'done' && (
           <>
             <h4 style={{ marginTop: 8 }}>AI整形結果（保存済み）</h4>
-            <div style={{ whiteSpace: 'pre-wrap', border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, marginTop: 6 }}>
+            <div
+              style={{
+                whiteSpace: 'pre-wrap',
+                border: '1px solid #e5e7eb',
+                borderRadius: 8,
+                padding: 12,
+                marginTop: 6,
+              }}
+            >
               {preview}
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button onClick={onClose} style={{ padding: '10px 14px' }}>閉じる</button>
+              <button
+                onClick={onClose}
+                style={{ padding: '10px 14px' }}
+              >
+                閉じる
+              </button>
             </div>
           </>
         )}
+
         {chatOpen && (
           <div
             style={{
@@ -298,7 +342,7 @@ export default function AppTasks() {
       const e = await getSessionEmail();
       setEmail(e);
       if (!e) return;
-      const list = await fetchTasksByEmail(e); // v_tasks_todo 由来：未入力のみ
+      const list = await fetchTasksByEmail(e);
       setTasks(list);
     } catch (e: any) {
       alert(e.message || '取得に失敗しました');
@@ -307,24 +351,24 @@ export default function AppTasks() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
+  // email が無いときは、Login + 開発用バイパスボタン
   if (!email) {
-    const devEmail = 'village.tsubasa.4499@gmail.com'; // あなたの普段使っているメール
+    const devEmail = 'village.tsubasa.4499@gmail.com';
 
     return (
       <>
         <Login onConfirmed={load} />
-        {/* 🔧 開発用：メール認証をスキップして予定一覧に入るボタン */}
         <div style={{ maxWidth: 720, margin: '16px auto', padding: '8px' }}>
           <button
             type="button"
             onClick={async () => {
               try {
                 setLoading(true);
-                // 開発用：強制的に email をセット
                 setEmail(devEmail);
-                // そのメールに紐づくタスク一覧を取得
                 const list = await fetchTasksByEmail(devEmail);
                 setTasks(list);
               } catch (e: any) {
@@ -349,12 +393,17 @@ export default function AppTasks() {
       </>
     );
   }
-  
+
   return (
     <div style={{ maxWidth: 720, margin: '16px auto', padding: '12px' }}>
       <h2>自分の予定一覧（{dateISO}）</h2>
       <div style={{ color: '#666' }}>ログイン: {email}</div>
-      <button onClick={load} style={{ margin: '8px 0', padding: '6px 10px' }}>再読み込み</button>
+      <button
+        onClick={load}
+        style={{ margin: '8px 0', padding: '6px 10px' }}
+      >
+        再読み込み
+      </button>
 
       {loading && <p>読み込み中…</p>}
       {!loading && tasks.length === 0 && <p>予定がありません。</p>}
@@ -362,20 +411,55 @@ export default function AppTasks() {
       {!loading && tasks.length > 0 && (
         <div style={{ display: 'grid', gap: 12, marginTop: 8 }}>
           {tasks.map((t) => (
-            <div key={t.id} style={{ border: '1px solid #ddd', borderRadius: 12, padding: 12 }}>
+            <div
+              key={t.id}
+              style={{
+                border: '1px solid #ddd',
+                borderRadius: 12,
+                padding: 12,
+              }}
+            >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{ fontWeight: 600 }}>{t.client_name}</div>
                 {t.status === 'submitted' && (
-                  <span style={{ fontSize: 12, color: '#92400e', background: '#fef3c7', padding: '2px 6px', borderRadius: 8 }}>送信中</span>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color: '#92400e',
+                      background: '#fef3c7',
+                      padding: '2px 6px',
+                      borderRadius: 8,
+                    }}
+                  >
+                    送信中
+                  </span>
                 )}
                 {t.status === 'done' && (
-                  <span style={{ fontSize: 12, color: '#065f46', background: '#d1fae5', padding: '2px 6px', borderRadius: 8 }}>完了</span>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color: '#065f46',
+                      background: '#d1fae5',
+                      padding: '2px 6px',
+                      borderRadius: 8,
+                    }}
+                  >
+                    完了
+                  </span>
                 )}
               </div>
-              <div style={{ color: '#666' }}>{t.start_time}〜{t.end_time} / {t.destination}</div>
+              <div style={{ color: '#666' }}>
+                {t.start_time}〜{t.end_time} / {t.destination}
+              </div>
               <button
                 onClick={() => setEditing(t)}
-                style={{ padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 8, marginTop: 8 }}>
+                style={{
+                  padding: '6px 10px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: 8,
+                  marginTop: 8,
+                }}
+              >
                 記録を入力
               </button>
             </div>
@@ -383,9 +467,15 @@ export default function AppTasks() {
         </div>
       )}
 
-      {editing && <Editor task={editing} onClose={() => { setEditing(null); load(); }} />}
+      {editing && (
+        <Editor
+          task={editing}
+          onClose={() => {
+            setEditing(null);
+            load();
+          }}
+        />
+      )}
     </div>
   );
 }
-
-useEffect(() => { load(); },
