@@ -1,3 +1,4 @@
+// src/components/ServiceNoteChat.tsx
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { ServiceNoteFields } from '../lib/serviceNoteSchema';
@@ -25,6 +26,7 @@ export default function ServiceNoteChat({ value, onChange, onComplete, onClose }
     sendAnswer,
   } = useConversationNote(value);
 
+  // 履歴が更新されたらスクロールを一番下へ
   useEffect(() => {
     const el = listRef.current;
     if (el) {
@@ -32,6 +34,7 @@ export default function ServiceNoteChat({ value, onChange, onComplete, onClose }
     }
   }, [history]);
 
+  // currentFields の内容は常に親フォームへ反映
   useEffect(() => {
     onChange(cloneServiceNoteFields(currentFields));
   }, [currentFields, onChange]);
@@ -53,12 +56,8 @@ export default function ServiceNoteChat({ value, onChange, onComplete, onClose }
   };
 
   const handleSubmit = (e: FormEvent) => {
+    // Enter / submit を無効化（onClick だけで制御）
     e.preventDefault();
-    if (isFinished) {
-      handleComplete();
-    } else {
-      handleSend();
-    }
   };
 
   const renderPromptHint = () => {
@@ -177,7 +176,8 @@ export default function ServiceNoteChat({ value, onChange, onComplete, onClose }
           }}
         />
         <button
-          type="submit"
+          type="button"
+          onClick={isFinished ? handleComplete : handleSend}
           disabled={loading || (!isFinished && !input.trim())}
           style={{
             width: '100%',
