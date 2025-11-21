@@ -356,12 +356,19 @@ export default function AppTasks() {
   }, []);
 
   // email が無いときは、Login + 開発用バイパスボタン
-  if (!email) {
-    const devEmail = 'village.tsubasa.4499@gmail.com';
+  // ★ 開発用バイパスボタンを隠すためのフラグ
+const showDevBypass =
+  import.meta.env.DEV || window.location.search.includes('dev=1');
 
-    return (
-      <>
-        <Login onConfirmed={load} />
+if (!email) {
+  const devEmail = 'village.tsubasa.4499@gmail.com';
+
+  return (
+    <>
+      <Login onConfirmed={load} />
+
+      {/* ★ ここがポイント：showDevBypass が true のときだけ表示 */}
+      {showDevBypass && (
         <div style={{ maxWidth: 720, margin: '16px auto', padding: '8px' }}>
           <button
             type="button"
@@ -390,9 +397,10 @@ export default function AppTasks() {
             🔧 開発用：メール認証をスキップして予定一覧に入る
           </button>
         </div>
-      </>
-    );
-  }
+      )}
+    </>
+  );
+}
 
   return (
     <div style={{ maxWidth: 720, margin: '16px auto', padding: '12px' }}>
@@ -479,3 +487,4 @@ export default function AppTasks() {
     </div>
   );
 }
+
