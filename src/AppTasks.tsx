@@ -402,89 +402,109 @@ if (!email) {
   );
 }
 
-  return (
-    <div style={{ maxWidth: 720, margin: '16px auto', padding: '12px' }}>
-      <h2>自分の予定一覧（{dateISO}）</h2>
-      <div style={{ color: '#666' }}>ログイン: {email}</div>
+return (
+  <div style={{ maxWidth: 720, margin: '16px auto', padding: '12px' }}>
+    <h2>自分の予定一覧（{dateISO}）</h2>
+    <div style={{ color: '#666' }}>ログイン: {email}</div>
+
+    {/* ← 再読み込み + サービス記録ボタンを横並びに */}
+    <div style={{ display: 'flex', gap: 8, margin: '8px 0' }}>
       <button
         onClick={load}
-        style={{ margin: '8px 0', padding: '6px 10px' }}
+        style={{ padding: '6px 10px' }}
       >
         再読み込み
       </button>
+      <button
+        type="button"
+        onClick={() => {
+          // サービス実施記録の閲覧ページへ遷移
+          window.location.href = '#/report';
+        }}
+        style={{
+          padding: '6px 10px',
+          borderRadius: 8,
+          border: '1px solid #60a5fa',
+          background: '#dbeafe',
+          color: '#1d4ed8',
+          fontWeight: 600,
+        }}
+      >
+        📄 サービス記録を見る
+      </button>
+    </div>
 
-      {loading && <p>読み込み中…</p>}
-      {!loading && tasks.length === 0 && <p>予定がありません。</p>}
+    {loading && <p>読み込み中…</p>}
+    {!loading && tasks.length === 0 && <p>予定がありません。</p>}
 
-      {!loading && tasks.length > 0 && (
-        <div style={{ display: 'grid', gap: 12, marginTop: 8 }}>
-          {tasks.map((t) => (
-            <div
-              key={t.id}
+    {!loading && tasks.length > 0 && (
+      <div style={{ display: 'grid', gap: 12, marginTop: 8 }}>
+        {tasks.map((t) => (
+          <div
+            key={t.id}
+            style={{
+              border: '1px solid #ddd',
+              borderRadius: 12,
+              padding: 12,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ fontWeight: 600 }}>{t.client_name}</div>
+              {t.status === 'submitted' && (
+                <span
+                  style={{
+                    fontSize: 12,
+                    color: '#92400e',
+                    background: '#fef3c7',
+                    padding: '2px 6px',
+                    borderRadius: 8,
+                  }}
+                >
+                  送信中
+                </span>
+              )}
+              {t.status === 'done' && (
+                <span
+                  style={{
+                    fontSize: 12,
+                    color: '#065f46',
+                    background: '#d1fae5',
+                    padding: '2px 6px',
+                    borderRadius: 8,
+                  }}
+                >
+                  完了
+                </span>
+              )}
+            </div>
+            <div style={{ color: '#666' }}>
+              {t.start_time}〜{t.end_time} / {t.destination}
+            </div>
+            <button
+              onClick={() => setEditing(t)}
               style={{
-                border: '1px solid #ddd',
-                borderRadius: 12,
-                padding: 12,
+                padding: '6px 10px',
+                border: '1px solid #d1d5db',
+                borderRadius: 8,
+                marginTop: 8,
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{ fontWeight: 600 }}>{t.client_name}</div>
-                {t.status === 'submitted' && (
-                  <span
-                    style={{
-                      fontSize: 12,
-                      color: '#92400e',
-                      background: '#fef3c7',
-                      padding: '2px 6px',
-                      borderRadius: 8,
-                    }}
-                  >
-                    送信中
-                  </span>
-                )}
-                {t.status === 'done' && (
-                  <span
-                    style={{
-                      fontSize: 12,
-                      color: '#065f46',
-                      background: '#d1fae5',
-                      padding: '2px 6px',
-                      borderRadius: 8,
-                    }}
-                  >
-                    完了
-                  </span>
-                )}
-              </div>
-              <div style={{ color: '#666' }}>
-                {t.start_time}〜{t.end_time} / {t.destination}
-              </div>
-              <button
-                onClick={() => setEditing(t)}
-                style={{
-                  padding: '6px 10px',
-                  border: '1px solid #d1d5db',
-                  borderRadius: 8,
-                  marginTop: 8,
-                }}
-              >
-                記録を入力
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+              記録を入力
+            </button>
+          </div>
+        ))}
+      </div>
+    )}
 
-      {editing && (
-        <Editor
-          task={editing}
-          onClose={() => {
-            setEditing(null);
-            load();
-          }}
-        />
-      )}
-    </div>
-  );
+    {editing && (
+      <Editor
+        task={editing}
+        onClose={() => {
+          setEditing(null);
+          load();
+        }}
+      />
+    )}
+  </div>
+);
 }
-
