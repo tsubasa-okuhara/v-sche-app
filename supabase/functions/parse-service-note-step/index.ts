@@ -149,11 +149,14 @@ function buildSummaryFromFields(f: ServiceNoteFields): string {
   // 2) 状態（condition）― 優先度をつけて1〜2フレーズだけ
   let condText = "";
   if (f.condition["seizure"]) {
-    condText = "移動中に軽い発作が見られたため、安全の確保と体勢の調整を行いました。";
+    condText =
+      "移動中に軽い発作が見られたため、安全の確保と体勢の調整を行いました。";
   } else if (f.condition["agitated"]) {
-    condText = "興奮気味な場面もあり、声かけや見守りを強めながら対応しました。";
+    condText =
+      "興奮気味な場面もあり、声かけや見守りを強めながら対応しました。";
   } else if (f.condition["slightly-unstable"]) {
-    condText = "一時的に不安定な様子もありましたが、声かけにより落ち着かれています。";
+    condText =
+      "一時的に不安定な様子もありましたが、声かけにより落ち着かれています。";
   } else if (f.condition["calm"]) {
     condText = "全体を通して落ち着いた様子で過ごされていました。";
   }
@@ -186,7 +189,7 @@ function buildSummaryFromFields(f: ServiceNoteFields): string {
     parts.push(`${toiletParts.join("・")}を行いました。`);
   }
 
-  // 4) 気分・水分・服薬などは短く一言だけ
+  // 4) 気分
   if (f.mood) {
     const moodText =
       f.mood === "sunny"
@@ -199,14 +202,30 @@ function buildSummaryFromFields(f: ServiceNoteFields): string {
     parts.push(moodText);
   }
 
-  if (f.mealWater) {
-    const waterText =
-      f.mealWater === "enough"
-        ? "水分は十分に摂取されています。"
-        : "水分摂取がやや少ない印象のため、今後も意識して声かけを行います。";
-    parts.push(waterText);
+  // 5) ★ 食事・水分（mealFood / mealWater のどちらかが null → 一切書かない）
+  if (f.mealFood || f.mealWater) {
+    const mealTexts: string[] = [];
+
+    if (f.mealFood === "all") {
+      mealTexts.push("食事は全量摂取されています");
+    } else if (f.mealFood === "half") {
+      mealTexts.push("食事は半量程度の摂取でした");
+    } else if (f.mealFood === "none") {
+      mealTexts.push("食事はほとんど摂取されませんでした");
+    }
+
+    if (f.mealWater === "enough") {
+      mealTexts.push("水分は十分に摂取されています");
+    } else if (f.mealWater === "lack") {
+      mealTexts.push("水分摂取がやや少ない印象でした");
+    }
+
+    if (mealTexts.length > 0) {
+      parts.push(mealTexts.join("。") + "。");
+    }
   }
 
+  // 6) ★ 服薬（medication が null → 一切書かない）
   if (f.medication) {
     const medText =
       f.medication === "taken"
@@ -217,7 +236,7 @@ function buildSummaryFromFields(f: ServiceNoteFields): string {
     parts.push(medText);
   }
 
-  // 5) メモを最後に少しだけ足す（長くなりすぎないようにトリミング）
+  // 7) メモ（40文字まで）
   if (f.memo && f.memo.trim()) {
     const memo = f.memo.trim();
     const memoTrimmed = memo.length > 40 ? memo.slice(0, 39) + "…" : memo;
@@ -233,7 +252,6 @@ function buildSummaryFromFields(f: ServiceNoteFields): string {
 
   return summary;
 }
-
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -392,3 +410,5 @@ Deno.serve(async (req) => {
     return err("Unexpected error", 500, { message: String(e) });
   }
 });
+
+// 4) 気分
