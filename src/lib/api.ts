@@ -3,6 +3,7 @@ import { supabase } from './supabase';
 import type { StoredAnswers } from './noteForm';
 import type { StepId } from './conversationSteps';
 import type { ServiceNoteFields } from './serviceNoteSchema';
+import { buildFactsFromFields } from './serviceNoteFacts';
 
 /* ========= 型 ========= */
 
@@ -214,9 +215,33 @@ export async function updateTaskStatus(taskId: string, status: 'submitted' | 'do
   if (error) throw error;
 }
 
+/** answers に ServiceNoteFields があれば、factsText を actual として上書きする */
+function withFactsActual(answers: any): any {
+  const next = { ...(answers ?? {}) };
+
+  try {
+    // parse-service-note-step の結果などから fields が入っている想定
+    const fields = next.fields as ServiceNoteFields | undefined;
+
+    if (fields) {
+      const facts = buildFactsFromFields(fields);
+      if (facts && facts.trim().length > 0) {
+        // actual を「事実だけの箇条書き」で上書き
+        next.actual = facts;
+      }
+    }
+  } catch (e) {
+    console.error('withFactsActual failed:', e);
+  }
+
+  return next;
+}
+
 /** 送信フロー（upsert → submitted → AI整形 → done） */
 export async function submitNote(taskId: string, answers: any) {
-  const noteId = await upsertServiceNote(taskId, answers);
+  const enrichedAnswers = withFactsActual(answers);       // ★ 追加
+
+  const noteId = await upsertServiceNote(taskId, enrichedAnswers);
   await updateTaskStatus(taskId, 'submitted');
   try {
     await runAiFormat(noteId);
@@ -260,9 +285,11 @@ export async function fetchMyPendingNotes(email?: string) {
 
 /** note_id から直接更新 → AI整形実行 */
 export async function submitNoteByNoteId(noteId: string, answers: any) {
+  const enrichedAnswers = withFactsActual(answers);       // ★ 追加
+
   const { error } = await supabase
     .from('service_notes')
-    .update({ answers })
+    .update({ answers: enrichedAnswers })
     .eq('id', noteId);
   if (error) throw error;
 
@@ -417,4 +444,3 @@ export async function parseServiceNoteStep(
   const data = await res.json();
   return data as ParseServiceNoteStepResult;
 }
- 

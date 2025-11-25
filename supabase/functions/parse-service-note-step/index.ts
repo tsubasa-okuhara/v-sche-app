@@ -23,8 +23,19 @@ type MealWaterKeys = "enough" | "lack" | null;
 type MedicationKeys = "taken" | "forgot" | "refused" | null;
 type InteractionKeys = "had" | "none" | null;
 
+type SectionKey =
+  | "condition"
+  | "toilet"
+  | "mood"
+  | "meal"
+  | "medication"
+  | "familyReport";
+
+type ServiceSections = Record<SectionKey, boolean>;
+
 type ServiceNoteFields = {
   destination: string;
+  sections: ServiceSections;
   condition: Record<ConditionKeys, boolean>;
   toilet: Record<ToiletKeys, boolean>;
   mood: MoodKeys;
@@ -87,6 +98,14 @@ const SYSTEM_PROMPT = `
 
 {
   "destination": string,
+  "sections": {
+    "condition": boolean,
+    "toilet": boolean,
+    "mood": boolean,
+    "meal": boolean,
+    "medication": boolean,
+    "familyReport": boolean
+  },
   "condition": {
     "calm": boolean,
     "slightly-unstable": boolean,
@@ -114,6 +133,7 @@ const SYSTEM_PROMPT = `
 
 ルール:
 - destination: 文字列。入力に合わせて自然な表現にしてください（例「自宅→まごめ園」など）。
+- sections: 各項目の表示フラグ。current.sections を基本的に引き継ぎ、ユーザーからの指示があったときのみ必要な部分を false に切り替えてください。
 - condition / toilet: ブールフラグ。該当する内容のみ true、それ以外は false。
   - condition: calm, slightly-unstable, agitated, seizure, no-seizure, condition-changed, condition-unchanged
   - toilet: urination, defecation, both, no-toilet, diaper, assist
@@ -146,51 +166,55 @@ function buildSummaryFromFields(f: ServiceNoteFields): string {
     parts.push(`${f.destination}までの移動支援を行いました。`);
   }
 
-  // 2) 状態（condition）― 優先度をつけて1〜2フレーズだけ
-  let condText = "";
-  if (f.condition["seizure"]) {
-    condText =
-      "移動中に軽い発作が見られたため、安全の確保と体勢の調整を行いました。";
-  } else if (f.condition["agitated"]) {
-    condText =
-      "興奮気味な場面もあり、声かけや見守りを強めながら対応しました。";
-  } else if (f.condition["slightly-unstable"]) {
-    condText =
-      "一時的に不安定な様子もありましたが、声かけにより落ち着かれています。";
-  } else if (f.condition["calm"]) {
-    condText = "全体を通して落ち着いた様子で過ごされていました。";
+  // 2) 状態（condition）― 大枠 ON のときだけ
+  if (f.sections.condition) {
+    let condText = "";
+    if (f.condition["seizure"]) {
+      condText =
+        "移動中に軽い発作が見られたため、安全の確保と体勢の調整を行いました。";
+    } else if (f.condition["agitated"]) {
+      condText =
+        "興奮気味な場面もあり、声かけや見守りを強めながら対応しました。";
+    } else if (f.condition["slightly-unstable"]) {
+      condText =
+        "一時的に不安定な様子もありましたが、声かけにより落ち着かれています。";
+    } else if (f.condition["calm"]) {
+      condText = "全体を通して落ち着いた様子で過ごされていました。";
+    }
+
+    if (condText) {
+      parts.push(condText);
+    }
+
+    if (f.condition["condition-changed"]) {
+      parts.push("普段と比べて体調や様子に変化が見られました。");
+    } else if (f.condition["condition-unchanged"]) {
+      parts.push("体調や様子に大きな変化は見られませんでした。");
+    }
   }
 
-  if (condText) {
-    parts.push(condText);
+  // 3) トイレ関連（あれば1文だけ）― 大枠 ON のときだけ
+  if (f.sections.toilet) {
+    const hasToilet =
+      f.toilet["urination"] ||
+      f.toilet["defecation"] ||
+      f.toilet["both"] ||
+      f.toilet["diaper"] ||
+      f.toilet["assist"];
+
+    if (hasToilet) {
+      const toiletParts: string[] = [];
+      if (f.toilet["urination"] || f.toilet["both"]) toiletParts.push("排尿介助");
+      if (f.toilet["defecation"] || f.toilet["both"]) toiletParts.push("排便介助");
+      if (f.toilet["diaper"]) toiletParts.push("おむつ交換");
+      if (f.toilet["assist"]) toiletParts.push("動作の見守りや声かけ");
+
+      parts.push(`${toiletParts.join("・")}を行いました。`);
+    }
   }
 
-  if (f.condition["condition-changed"]) {
-    parts.push("普段と比べて体調や様子に変化が見られました。");
-  } else if (f.condition["condition-unchanged"]) {
-    parts.push("体調や様子に大きな変化は見られませんでした。");
-  }
-
-  // 3) トイレ関連（あれば1文だけ）
-  const hasToilet =
-    f.toilet["urination"] ||
-    f.toilet["defecation"] ||
-    f.toilet["both"] ||
-    f.toilet["diaper"] ||
-    f.toilet["assist"];
-
-  if (hasToilet) {
-    const toiletParts: string[] = [];
-    if (f.toilet["urination"] || f.toilet["both"]) toiletParts.push("排尿介助");
-    if (f.toilet["defecation"] || f.toilet["both"]) toiletParts.push("排便介助");
-    if (f.toilet["diaper"]) toiletParts.push("おむつ交換");
-    if (f.toilet["assist"]) toiletParts.push("動作の見守りや声かけ");
-
-    parts.push(`${toiletParts.join("・")}を行いました。`);
-  }
-
-  // 4) 気分
-  if (f.mood) {
+  // 4) 気分 ― 大枠 ON のときだけ
+  if (f.sections.mood && f.mood) {
     const moodText =
       f.mood === "sunny"
         ? "表情も明るく比較的穏やかに過ごされています。"
@@ -202,8 +226,8 @@ function buildSummaryFromFields(f: ServiceNoteFields): string {
     parts.push(moodText);
   }
 
-  // 5) ★ 食事・水分（mealFood / mealWater のどちらかが null → 一切書かない）
-  if (f.mealFood || f.mealWater) {
+  // 5) 食事・水分 ― 大枠 ON かつ値ありのときだけ
+  if (f.sections.meal && (f.mealFood || f.mealWater)) {
     const mealTexts: string[] = [];
 
     if (f.mealFood === "all") {
@@ -225,8 +249,8 @@ function buildSummaryFromFields(f: ServiceNoteFields): string {
     }
   }
 
-  // 6) ★ 服薬（medication が null → 一切書かない）
-  if (f.medication) {
+  // 6) 服薬 ― 大枠 ON かつ値ありのときだけ
+  if (f.sections.medication && f.medication) {
     const medText =
       f.medication === "taken"
         ? "服薬は指示どおり行えています。"
@@ -410,5 +434,3 @@ Deno.serve(async (req) => {
     return err("Unexpected error", 500, { message: String(e) });
   }
 });
-
-// 4) 気分
