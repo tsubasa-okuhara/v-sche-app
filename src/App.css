@@ -2,7 +2,6 @@
   max-width: 1280px;
   margin: 0 auto;
   padding: 2rem;
-  text-align: center;
 }
 
 .logo {
@@ -97,4 +96,176 @@
 /* iOS Safari 微調整 */
 @supports (-webkit-touch-callout: none) {
   input, button { font-size: 16px; } /* ズーム抑制 */
+}
+
+/* ===== MonthlyReservationForm 共通スタイル ===== */
+
+.monthly-reservation {
+  padding: 24px;
+  max-width: 900px;
+  margin: 0 auto;
+  text-align: left;  /* ★ これを追加 */
+}
+
+.mr-section {
+  margin-top: 16px;
+}
+
+.mr-user-grid {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  row-gap: 8px;
+}
+
+.mr-common-grid {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  row-gap: 8px;
+}
+
+.mr-layout-two-column {
+  display: grid;
+  grid-template-columns: 2fr 3fr;
+  gap: 24px;
+}
+
+.mr-button-main {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  background: #007bff;
+  color: #fff;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.mr-button-sub {
+  margin-top: 8px;
+  padding: 6px 12px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+  background: #f7f7f7;
+  cursor: pointer;
+}
+
+.mr-calendar-wrapper {
+  overflow-x: auto;
+}
+
+.mr-calendar-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mr-calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.mr-calendar-cell {
+  border-radius: 4px;
+  padding: 4px;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.mr-calendar-cell-header {
+  font-weight: bold;
+  margin-bottom: 2px;
+  font-size: 13px;
+}
+
+.mr-calendar-chip {
+  margin-bottom: 2px;
+  padding: 2px 3px;
+  border-radius: 3px;
+  border: 1px solid #eee;
+  background: #fdf5ff;
+}
+
+.mr-calendar-chip-route {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mr-calendar-cell-button {
+  margin: 2px;
+  padding: 6px 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.mr-selected-days {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.mr-detail-card {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 8px;
+  margin-bottom: 8px;
+  background: #fdf5ff;
+}
+
+.mr-detail-title {
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.mr-detail-note {
+  margin-top: 4px;
+}
+
+/* ===== モバイル対応 ===== */
+@media (max-width: 768px) {
+  .monthly-reservation {
+    padding: 16px;
+  }
+
+  .monthly-reservation h1 {
+    font-size: 1.1rem;
+    line-height: 1.4;
+    margin-bottom: 12px;
+  }
+
+  .monthly-reservation h2 {
+    font-size: 1rem;
+  }
+
+  .mr-user-grid,
+  .mr-common-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mr-layout-two-column {
+    grid-template-columns: 1fr;
+  }
+
+  .mr-calendar-wrapper--input,
+  .mr-calendar-wrapper--summary {
+    overflow-x: auto;
+  }
+
+  .mr-calendar-grid {
+    min-width: 770px; /* ★ 横スクロールさせるために少し広めに */
+  }
+
+  .mr-calendar-cell {
+    min-height: 70px;
+  }
+
+  .mr-detail-card {
+    font-size: 14px;
+  }
+}
+.mr-calendar-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
 }
