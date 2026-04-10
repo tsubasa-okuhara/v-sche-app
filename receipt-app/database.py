@@ -131,9 +131,14 @@ def sign_up_helper(email: str, password: str) -> Dict:
     except Exception as e:
         return {"ok": False, "error": f"helper_master 確認エラー: {e}", "helper": None}
 
-    # Supabase Auth でサインアップ
+    # Supabase Auth Admin API でサインアップ (メール確認をスキップ)
+    # service_role キーを使っているため admin API が使える
     try:
-        auth_res = client.auth.sign_up({"email": email, "password": password})
+        auth_res = client.auth.admin.create_user({
+            "email": email,
+            "password": password,
+            "email_confirm": True,  # メール確認をスキップしてすぐログイン可能に
+        })
         if auth_res.user is None:
             return {
                 "ok": False,
@@ -143,7 +148,12 @@ def sign_up_helper(email: str, password: str) -> Dict:
         return {"ok": True, "error": "", "helper": helper}
     except Exception as e:
         msg = str(e)
-        if "already registered" in msg.lower() or "already_exists" in msg.lower():
+        if (
+            "already registered" in msg.lower()
+            or "already_exists" in msg.lower()
+            or "already been registered" in msg.lower()
+            or "duplicate" in msg.lower()
+        ):
             return {
                 "ok": False,
                 "error": "このメールアドレスは既に登録済みです。ログインしてください。",
