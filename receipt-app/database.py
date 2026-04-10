@@ -157,11 +157,11 @@ def _supabase_init():
         return
 
     try:
-        res = client.table("categories").select("id").limit(1).execute()
+        res = client.table("receipt_categories").select("id").limit(1).execute()
         if not res.data:
             now = datetime.now().isoformat()
             rows = [{"name": c, "is_active": True, "created_at": now} for c in DEFAULT_CATEGORIES]
-            client.table("categories").insert(rows).execute()
+            client.table("receipt_categories").insert(rows).execute()
     except Exception as e:
         print(f"Supabase初期化警告: {e}")
 
@@ -543,7 +543,7 @@ def get_categories(active_only: bool = True) -> List[str]:
     client = _get_supabase_client()
     if client is not None:
         try:
-            q = client.table("categories").select("name")
+            q = client.table("receipt_categories").select("name")
             if active_only:
                 q = q.eq("is_active", True)
             q = q.order("name")

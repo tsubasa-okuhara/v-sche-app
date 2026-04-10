@@ -2,6 +2,10 @@
 -- Supabase スキーマ (PostgreSQL)
 -- 電子帳簿保存法対応 経費精算・レシート管理システム
 --
+-- ⚠️ このスキーマは既存 Supabase プロジェクト (村サポートの village-tsubasa 等)
+-- に追加しても既存データに影響が出ないよう、全テーブル名を receipt_ プレフィックス
+-- にしてあります。
+--
 -- 使い方:
 --   1. Supabase ダッシュボード → SQL Editor を開く
 --   2. このファイルの内容を貼り付け
@@ -49,8 +53,9 @@ CREATE TABLE IF NOT EXISTS receipt_audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_receipt_id ON receipt_audit_log(receipt_id);
 CREATE INDEX IF NOT EXISTS idx_audit_changed_at ON receipt_audit_log(changed_at);
 
--- categories テーブル (費目マスタ)
-CREATE TABLE IF NOT EXISTS categories (
+-- receipt_categories テーブル (経費費目マスタ)
+-- ※既存の categories テーブル（ヘルパー用等）と衝突しないよう receipt_ プレフィックス
+CREATE TABLE IF NOT EXISTS receipt_categories (
     id         BIGSERIAL PRIMARY KEY,
     name       TEXT UNIQUE NOT NULL,
     is_active  BOOLEAN NOT NULL DEFAULT TRUE,
@@ -58,7 +63,7 @@ CREATE TABLE IF NOT EXISTS categories (
 );
 
 -- 初期カテゴリーデータ
-INSERT INTO categories (name, is_active)
+INSERT INTO receipt_categories (name, is_active)
 VALUES
     ('交通費',       TRUE),
     ('接待交際費',   TRUE),
@@ -77,9 +82,9 @@ ON CONFLICT (name) DO NOTHING;
 -- RLS を有効にしても素通りしますが、匿名キー経由の誤アクセスを
 -- 防ぐために RLS を有効化しておく。
 
-ALTER TABLE receipts         ENABLE ROW LEVEL SECURITY;
-ALTER TABLE receipt_audit_log ENABLE ROW LEVEL SECURITY;
-ALTER TABLE categories       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE receipts            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE receipt_audit_log   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE receipt_categories  ENABLE ROW LEVEL SECURITY;
 
 -- 物理削除を防ぐトリガー (DELETE禁止)
 CREATE OR REPLACE FUNCTION prevent_receipt_delete()
@@ -96,15 +101,15 @@ CREATE TRIGGER trg_prevent_receipt_delete
     EXECUTE FUNCTION prevent_receipt_delete();
 
 -- 監査ログの変更・削除を防ぐトリガー (改ざん防止)
-CREATE OR REPLACE FUNCTION prevent_audit_modification()
+CREATE OR REPLACE FUNCTION prevent_receipt_audit_modification()
 RETURNS TRIGGER AS $$
 BEGIN
     RAISE EXCEPTION '監査ログの変更・削除は禁止されています。';
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trg_prevent_audit_update ON receipt_audit_log;
-CREATE TRIGGER trg_prevent_audit_update
+DROP TRIGGER IF EXISTS trg_prevent_receipt_audit_update ON receipt_audit_log;
+CREATE TRIGGER trg_prevent_receipt_audit_update
     BEFORE UPDATE OR DELETE ON receipt_audit_log
     FOR EACH ROW
-    EXECUTE FUNCTION prevent_audit_modification();
+    EXECUTE FUNCTION prevent_receipt_audit_modification();
