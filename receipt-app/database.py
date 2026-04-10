@@ -84,15 +84,22 @@ def _use_supabase() -> bool:
 def get_helper_by_email(email: str) -> Optional[Dict]:
     """
     helper_master テーブルから email で helper 情報を取得。
+    大文字小文字を無視して検索する (ilike)。
     ローカル SQLite モードでは常に None (認証不要)。
     """
     if not email:
         return None
+    email = email.strip()
     client = _get_supabase_client()
     if client is None:
         return None
     try:
-        res = client.table("helper_master").select("*").eq("helper_email", email).execute()
+        res = (
+            client.table("helper_master")
+            .select("*")
+            .ilike("helper_email", email)
+            .execute()
+        )
         if res.data:
             return res.data[0]
     except Exception as e:
