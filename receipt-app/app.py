@@ -19,16 +19,18 @@ from database import (
     search_receipts, get_receipt_by_id, get_audit_log,
     get_categories, get_unique_vendors, get_receipt_stats,
     sign_in_helper, sign_up_helper, sign_out_helper,
+    is_admin, search_all_receipts, get_all_receipt_stats,
 )
 from image_utils import validate_image, compute_hash, save_image, load_image_for_display, auto_crop_receipt
 from ocr_utils import extract_text, extract_receipt_info
 
 # ===== ページ設定 =====
+# スマホ対応: サイドバーを初期非表示、縦積みレイアウトのため layout=centered
 st.set_page_config(
     page_title="経費精算・レシート管理",
     page_icon="🧾",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="centered",
+    initial_sidebar_state="collapsed"
 )
 
 # ===== スタイル設定 =====
@@ -139,8 +141,16 @@ def format_currency(amount: float) -> str:
     return f"¥{amount:,.0f}"
 
 
-def create_excel_download(results: list, date_from=None, date_to=None) -> bytes:
-    """検索結果をExcelファイルに変換して返す"""
+def create_excel_download(
+    results: list,
+    date_from=None,
+    date_to=None,
+    include_helper: bool = False,
+) -> bytes:
+    """
+    検索結果をExcelファイルに変換して返す
+    include_helper=True にすると「登録者」列を追加 (管理者用・税理士提出用)
+    """
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "経費明細"
@@ -159,8 +169,17 @@ def create_excel_download(results: list, date_from=None, date_to=None) -> bytes:
         bottom=Side(style="thin", color="CCCCCC"),
     )
 
+    # ヘッダー定義 (費目列を追加)
+    if include_helper:
+        headers = ["No.", "取引日", "費目", "金額", "取引先", "登録者"]
+        col_widths = [6, 14, 14, 14, 30, 20]
+    else:
+        headers = ["No.", "取引日", "費目", "金額", "取引先"]
+        col_widths = [6, 14, 14, 14, 30]
+    last_col_letter = get_column_letter(len(headers))
+
     # タイトル行
-    ws.merge_cells("A1:C1")
+    ws.merge_cells(f"A1:{last_col_letter}1")
     ws["A1"] = "経費精算明細書"
     ws["A1"].font = title_font
 
@@ -173,7 +192,7 @@ def create_excel_download(results: list, date_from=None, date_to=None) -> bytes:
     elif date_to:
         period_text = f"期間: ～ {date_to}"
     if period_text:
-        ws.merge_cells("A2:C2")
+        ws.merge_cells(f"A2:{last_col_letter}2")
         ws["A2"] = period_text
         ws["A2"].font = subtitle_font
 
@@ -182,8 +201,6 @@ def create_excel_download(results: list, date_from=None, date_to=None) -> bytes:
     ws["A3"].font = subtitle_font
 
     # ヘッダー行（5行目から）
-    headers = ["No.", "取引日", "金額", "取引先"]
-    col_widths = [6, 14, 14, 30]
     for col_idx, (header, width) in enumerate(zip(headers, col_widths), 1):
         cell = ws.cell(row=5, column=col_idx, value=header)
         cell.font = header_font
@@ -192,26 +209,41 @@ def create_excel_download(results: list, date_from=None, date_to=None) -> bytes:
         cell.border = thin_border
         ws.column_dimensions[get_column_letter(col_idx)].width = width
 
+    # 金額列のインデックス (1始まり)
+    amount_col_idx = 4
+
     # データ行
     total_amount = 0
     for row_idx, receipt in enumerate(results, 1):
         row = row_idx + 5
-        ws.cell(row=row, column=1, value=row_idx).border = thin_border
-        ws.cell(row=row, column=1).alignment = Alignment(horizontal="center")
+        # No.
+        no_cell = ws.cell(row=row, column=1, value=row_idx)
+        no_cell.border = thin_border
+        no_cell.alignment = Alignment(horizontal="center")
+        # 取引日
         ws.cell(row=row, column=2, value=receipt['transaction_date']).border = thin_border
-        amount_cell = ws.cell(row=row, column=3, value=receipt['amount'])
+        # 費目
+        ws.cell(row=row, column=3, value=receipt.get('category') or '').border = thin_border
+        # 金額
+        amount_cell = ws.cell(row=row, column=amount_col_idx, value=receipt['amount'])
         amount_cell.number_format = currency_format
         amount_cell.border = thin_border
         amount_cell.alignment = Alignment(horizontal="right")
-        ws.cell(row=row, column=4, value=receipt['vendor']).border = thin_border
+        # 取引先
+        ws.cell(row=row, column=5, value=receipt.get('vendor') or '').border = thin_border
+        # 登録者 (管理者出力のみ)
+        if include_helper:
+            helper_display = receipt.get('helper_name') or receipt.get('helper_email') or ''
+            ws.cell(row=row, column=6, value=helper_display).border = thin_border
         total_amount += receipt['amount']
 
     # 合計行
     total_row = len(results) + 6
-    ws.cell(row=total_row, column=2, value="合計").font = Font(bold=True)
-    ws.cell(row=total_row, column=2).alignment = Alignment(horizontal="right")
-    ws.cell(row=total_row, column=2).border = thin_border
-    total_cell = ws.cell(row=total_row, column=3, value=total_amount)
+    label_cell = ws.cell(row=total_row, column=amount_col_idx - 1, value="合計")
+    label_cell.font = Font(bold=True)
+    label_cell.alignment = Alignment(horizontal="right")
+    label_cell.border = thin_border
+    total_cell = ws.cell(row=total_row, column=amount_col_idx, value=total_amount)
     total_cell.font = Font(bold=True)
     total_cell.number_format = currency_format
     total_cell.alignment = Alignment(horizontal="right")
@@ -236,41 +268,36 @@ def page_receipt_registration(user: dict):
     helper_email = user["helper_email"]
     helper_name = user.get("helper_name", "")
 
-    col1, col2 = st.columns([2, 1])
-
-    with col1:
-        st.header("ステップ1: 画像アップロード")
-        uploaded_file = st.file_uploader(
-            "レシート画像をアップロード（JPG, PNG）",
-            type=["jpg", "jpeg", "png"],
-            help="ドラッグ&ドロップまたはクリックして選択"
-        )
+    st.subheader("ステップ1: 画像アップロード")
+    uploaded_file = st.file_uploader(
+        "レシート画像をアップロード（JPG, PNG）",
+        type=["jpg", "jpeg", "png"],
+        help="スマホの場合: タップするとカメラ or 写真から選べます"
+    )
 
     # ===== 画像バリデーション =====
     image_data = None
     ocr_result = None
 
     if uploaded_file:
-        st.subheader("画像検証結果")
-
         # ファイルを読み込む
         image_bytes = uploaded_file.getvalue()
         validation = validate_image(uploaded_file)
 
-        col_img, col_check = st.columns([2, 1])
+        # 画像プレビュー (1カラム)
+        st.image(image_bytes, caption="アップロード画像", width="stretch")
 
-        with col_img:
-            # 画像プレビュー
-            st.image(image_bytes, caption="アップロード画像", width="stretch")
+        # 検証結果 (折りたたみで詳細、バッジで概要のみ)
+        if validation['is_valid']:
+            st.success("✅ 画像検証: 合格")
+        else:
+            st.error("❌ 画像検証: 不合格")
 
-        with col_check:
-            st.write("**画像仕様:**")
+        with st.expander("画像の詳細を見る", expanded=False):
             st.write(f"- 形式: {validation['format']}")
             st.write(f"- サイズ: {validation['width']}×{validation['height']}px")
             st.write(f"- 色モード: {validation['color_mode']}")
             st.write(f"- DPI: {validation['dpi']}")
-
-            st.write("**検証:**")
 
             # DPIチェック
             if validation['dpi'] and validation['dpi'] >= 200:
@@ -283,12 +310,6 @@ def page_receipt_registration(user: dict):
                 st.success(f"✅ 色モードOK（{validation['color_mode']}）")
             else:
                 st.error(f"❌ 色モード不正（{validation['color_mode']}）")
-
-            # 全体判定
-            if validation['is_valid']:
-                st.success("✅ 画像検証: 合格")
-            else:
-                st.error("❌ 画像検証: 不合格")
 
         # エラー・警告表示
         if validation['errors']:
@@ -340,46 +361,43 @@ def page_receipt_registration(user: dict):
 
     # ===== レシート登録フォーム =====
     if image_data and ocr_result:
-        st.header("ステップ3: レシート情報入力")
+        st.subheader("ステップ3: レシート情報入力")
 
         with st.form("receipt_form"):
-            col1, col2 = st.columns(2)
+            # スマホ対応: 1カラム縦積み
+            transaction_date = st.date_input(
+                "取引年月日",
+                value=datetime.strptime(ocr_result['date'], '%Y-%m-%d').date() if ocr_result['date'] else datetime.now().date(),
+                format="YYYY-MM-DD"
+            )
 
-            with col1:
-                transaction_date = st.date_input(
-                    "取引年月日",
-                    value=datetime.strptime(ocr_result['date'], '%Y-%m-%d').date() if ocr_result['date'] else datetime.now().date(),
-                    format="YYYY-MM-DD"
-                )
+            amount = st.number_input(
+                "金額",
+                value=int(ocr_result['amount']) if ocr_result['amount'] else 0,
+                min_value=0,
+                step=1,
+                format="%d"
+            )
 
-                amount = st.number_input(
-                    "金額",
-                    value=int(ocr_result['amount']) if ocr_result['amount'] else 0,
-                    min_value=0,
-                    step=1,
-                    format="%d"
-                )
+            vendors = get_unique_vendors(helper_email)
+            vendor_default = ocr_result['vendor'] if ocr_result['vendor'] and ocr_result['vendor'] in vendors else (vendors[0] if vendors else "")
 
-            with col2:
-                vendors = get_unique_vendors(helper_email)
-                vendor_default = ocr_result['vendor'] if ocr_result['vendor'] and ocr_result['vendor'] in vendors else (vendors[0] if vendors else "")
+            vendor = st.selectbox(
+                "取引先",
+                options=vendors + [""] if vendors else [""],
+                index=vendors.index(vendor_default) if vendor_default and vendor_default in vendors else len(vendors),
+                key="vendor_select"
+            )
 
-                vendor = st.selectbox(
-                    "取引先",
-                    options=vendors + [""] if vendors else [""],
-                    index=vendors.index(vendor_default) if vendor_default and vendor_default in vendors else len(vendors),
-                    key="vendor_select"
-                )
+            # 新規取引先入力
+            if vendor == "":
+                vendor = st.text_input("取引先を入力", value=ocr_result['vendor'] or "")
 
-                # 新規取引先入力
-                if vendor == "":
-                    vendor = st.text_input("取引先を入力", value=ocr_result['vendor'] or "")
-
-                category = st.selectbox(
-                    "費目",
-                    options=get_categories(),
-                    index=0
-                )
+            category = st.selectbox(
+                "費目",
+                options=get_categories(),
+                index=0
+            )
 
             description = st.text_area(
                 "備考",
@@ -432,51 +450,42 @@ def page_search_and_list(user: dict):
 
     helper_email = user["helper_email"]
 
-    # 検索パネル
+    # 検索パネル (スマホ対応: 1カラム縦積み)
     with st.expander("🔎 検索条件", expanded=True):
-        col1, col2, col3 = st.columns(3)
+        date_from = st.date_input(
+            "取引年月日：開始",
+            value=datetime.now().date() - timedelta(days=90),
+            format="YYYY-MM-DD"
+        )
 
-        with col1:
-            date_from = st.date_input(
-                "取引年月日：開始",
-                value=datetime.now().date() - timedelta(days=90),
-                format="YYYY-MM-DD"
-            )
+        date_to = st.date_input(
+            "取引年月日：終了",
+            value=datetime.now().date(),
+            format="YYYY-MM-DD"
+        )
 
-        with col2:
-            date_to = st.date_input(
-                "取引年月日：終了",
-                value=datetime.now().date(),
-                format="YYYY-MM-DD"
-            )
+        vendors = [""] + get_unique_vendors(helper_email)
+        vendor = st.selectbox(
+            "取引先",
+            options=vendors,
+            index=0
+        )
 
-        with col3:
-            vendors = [""] + get_unique_vendors(helper_email)
-            vendor = st.selectbox(
-                "取引先",
-                options=vendors,
-                index=0
-            )
+        amount_min = st.number_input(
+            "金額：最小",
+            value=0,
+            min_value=0,
+            step=100,
+            format="%d"
+        )
 
-        col1, col2 = st.columns(2)
-
-        with col1:
-            amount_min = st.number_input(
-                "金額：最小",
-                value=0,
-                min_value=0,
-                step=100,
-                format="%d"
-            )
-
-        with col2:
-            amount_max = st.number_input(
-                "金額：最大",
-                value=999999,
-                min_value=0,
-                step=100,
-                format="%d"
-            )
+        amount_max = st.number_input(
+            "金額：最大",
+            value=999999,
+            min_value=0,
+            step=100,
+            format="%d"
+        )
 
     # 検索実行
     if st.button("検索", use_container_width=True, type="primary"):
@@ -490,20 +499,17 @@ def page_search_and_list(user: dict):
         )
 
         if results:
-            # 統計情報
+            # 統計情報 (スマホでも3列の方がコンパクトなので残す)
             stats = get_receipt_stats(
                 helper_email=helper_email,
                 date_from=date_from.isoformat(),
                 date_to=date_to.isoformat()
             )
 
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("件数", f"{stats['count']}件")
-            with col2:
-                st.metric("合計金額", format_currency(stats['total']))
-            with col3:
-                st.metric("平均金額", format_currency(stats['total'] / stats['count'] if stats['count'] > 0 else 0))
+            c1, c2, c3 = st.columns(3)
+            c1.metric("件数", f"{stats['count']}件")
+            c2.metric("合計", format_currency(stats['total']))
+            c3.metric("平均", format_currency(stats['total'] / stats['count'] if stats['count'] > 0 else 0))
 
             # 結果テーブル
             st.subheader("検索結果")
@@ -569,25 +575,20 @@ def page_detail_and_edit(user: dict):
 
     helper_email = user["helper_email"]
 
-    # レシート選択
-    col1, col2 = st.columns([3, 1])
+    # レシート選択 (スマホ対応: 縦積み)
+    all_receipts = search_receipts(helper_email=helper_email)
+    if all_receipts:
+        receipt_id = st.selectbox(
+            "レシートを選択",
+            options=[r['id'] for r in all_receipts],
+            format_func=lambda x: f"ID: {x} - {next((r['transaction_date'] for r in all_receipts if r['id'] == x), 'N/A')}"
+        )
+    else:
+        st.info("登録されたレシートがありません")
+        return
 
-    with col1:
-        # データベースの全レシートを取得
-        all_receipts = search_receipts(helper_email=helper_email)
-        if all_receipts:
-            receipt_id = st.selectbox(
-                "レシートを選択",
-                options=[r['id'] for r in all_receipts],
-                format_func=lambda x: f"ID: {x} - {next((r['transaction_date'] for r in all_receipts if r['id'] == x), 'N/A')}"
-            )
-        else:
-            st.info("登録されたレシートがありません")
-            return
-
-    with col2:
-        if st.button("🔄 再読み込み"):
-            st.rerun()
+    if st.button("🔄 再読み込み", use_container_width=True):
+        st.rerun()
 
     # レシート詳細を取得
     receipt = get_receipt_by_id(receipt_id, helper_email=helper_email)
@@ -606,20 +607,14 @@ def page_detail_and_edit(user: dict):
         else:
             st.warning("画像が見つかりません")
 
-    # 現在の情報を表示
+    # 現在の情報を表示 (スマホ対応: 縦積み)
     st.subheader("登録情報")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.write(f"**ID:** {receipt['id']}")
-        st.write(f"**取引日:** {receipt['transaction_date']}")
-        st.write(f"**金額:** {format_currency(receipt['amount'])}")
-
-    with col2:
-        st.write(f"**取引先:** {receipt['vendor']}")
-        st.write(f"**費目:** {receipt['category']}")
-        st.write(f"**登録日:** {receipt['created_at']}")
+    st.write(f"**ID:** {receipt['id']}")
+    st.write(f"**取引日:** {receipt['transaction_date']}")
+    st.write(f"**金額:** {format_currency(receipt['amount'])}")
+    st.write(f"**取引先:** {receipt['vendor']}")
+    st.write(f"**費目:** {receipt['category']}")
+    st.write(f"**登録日:** {receipt['created_at']}")
 
     if receipt['description']:
         st.write(f"**備考:** {receipt['description']}")
@@ -633,41 +628,40 @@ def page_detail_and_edit(user: dict):
     st.subheader("情報を編集")
 
     with st.form("edit_form"):
-        col1, col2 = st.columns(2)
+        # スマホ対応: 1カラム縦積み
+        new_date = st.date_input(
+            "取引年月日",
+            value=datetime.strptime(receipt['transaction_date'], '%Y-%m-%d').date(),
+            format="YYYY-MM-DD"
+        )
 
-        with col1:
-            new_date = st.date_input(
-                "取引年月日",
-                value=datetime.strptime(receipt['transaction_date'], '%Y-%m-%d').date(),
-                format="YYYY-MM-DD"
-            )
+        new_amount = st.number_input(
+            "金額",
+            value=int(receipt['amount']),
+            min_value=0,
+            step=1,
+            format="%d"
+        )
 
-            new_amount = st.number_input(
-                "金額",
-                value=int(receipt['amount']),
-                min_value=0,
-                step=1,
-                format="%d"
-            )
+        vendors = get_unique_vendors(helper_email)
+        if receipt['vendor'] and receipt['vendor'] not in vendors:
+            vendors = [receipt['vendor']] + vendors
+        vendor_index = vendors.index(receipt['vendor']) if receipt['vendor'] in vendors else 0
 
-        with col2:
-            vendors = get_unique_vendors(helper_email)
-            vendor_index = vendors.index(receipt['vendor']) if receipt['vendor'] in vendors else 0
+        new_vendor = st.selectbox(
+            "取引先",
+            options=vendors if vendors else [""],
+            index=vendor_index if vendors else 0
+        )
 
-            new_vendor = st.selectbox(
-                "取引先",
-                options=vendors,
-                index=vendor_index if vendors else 0
-            )
+        categories = get_categories()
+        category_index = categories.index(receipt['category']) if receipt['category'] in categories else 0
 
-            categories = get_categories()
-            category_index = categories.index(receipt['category']) if receipt['category'] in categories else 0
-
-            new_category = st.selectbox(
-                "費目",
-                options=categories,
-                index=category_index
-            )
+        new_category = st.selectbox(
+            "費目",
+            options=categories,
+            index=category_index
+        )
 
         new_description = st.text_area(
             "備考",
@@ -681,13 +675,9 @@ def page_detail_and_edit(user: dict):
             help="電子帳簿保存法対応のため、変更理由の記録が必須です"
         )
 
-        col1, col2 = st.columns(2)
-
-        with col1:
-            submit_update = st.form_submit_button("変更を保存", use_container_width=True, type="primary")
-
-        with col2:
-            submit_delete = st.form_submit_button("論理削除", use_container_width=True, type="secondary")
+        # ボタンは縦積み
+        submit_update = st.form_submit_button("変更を保存", use_container_width=True, type="primary")
+        submit_delete = st.form_submit_button("論理削除", use_container_width=True, type="secondary")
 
         if submit_update:
             if not change_reason:
@@ -759,6 +749,130 @@ def page_detail_and_edit(user: dict):
         st.info("変更履歴がありません")
 
 
+# ===== ページ5 (管理者専用): 税理士提出 =====
+def page_tax_report(user: dict):
+    """管理者専用ページ: 全ヘルパーのレシートをまとめて税理士提出用Excelに出力"""
+    st.title("📊 税理士提出 (管理者)")
+
+    helper_email = user["helper_email"]
+
+    # 権限チェック (多重防御)
+    if not is_admin(helper_email):
+        st.error("❌ このページは管理者のみ利用できます。")
+        return
+
+    st.write("""
+    全ヘルパーの経費レシートをまとめて取得し、税理士提出用のExcelファイルを作成します。
+    出力には「登録者」列が含まれ、ヘルパー別の費用を確認できます。
+    """)
+
+    # 検索パネル (スマホ対応: 1カラム縦積み)
+    with st.expander("🔎 出力条件", expanded=True):
+        # デフォルトは過去1年
+        default_from = datetime.now().date() - timedelta(days=365)
+        default_to = datetime.now().date()
+
+        date_from = st.date_input(
+            "取引年月日：開始",
+            value=default_from,
+            format="YYYY-MM-DD",
+            key="tax_date_from",
+        )
+
+        date_to = st.date_input(
+            "取引年月日：終了",
+            value=default_to,
+            format="YYYY-MM-DD",
+            key="tax_date_to",
+        )
+
+        category_filter = st.selectbox(
+            "費目で絞り込み（空白=全費目）",
+            options=[""] + get_categories(),
+            index=0,
+            key="tax_category",
+        )
+
+    if st.button("全ヘルパーの経費を集計", use_container_width=True, type="primary"):
+        results = search_all_receipts(
+            date_from=date_from.isoformat() if date_from else None,
+            date_to=date_to.isoformat() if date_to else None,
+            category=category_filter if category_filter else None,
+        )
+
+        if not results:
+            st.info("該当するレシートがありません")
+            return
+
+        # 統計情報
+        stats = get_all_receipt_stats(
+            date_from=date_from.isoformat(),
+            date_to=date_to.isoformat(),
+        )
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("件数", f"{stats['count']}件")
+        c2.metric("合計", format_currency(stats['total']))
+        c3.metric(
+            "平均",
+            format_currency(stats['total'] / stats['count'] if stats['count'] > 0 else 0),
+        )
+
+        # 結果テーブル (登録者列を含む)
+        st.subheader("集計結果（全ヘルパー）")
+
+        df = pd.DataFrame(results)
+        # helper_name が無ければ helper_email で埋める
+        if 'helper_name' in df.columns:
+            df['登録者'] = df['helper_name'].fillna('').replace('', None)
+            if 'helper_email' in df.columns:
+                df['登録者'] = df['登録者'].fillna(df['helper_email'])
+        elif 'helper_email' in df.columns:
+            df['登録者'] = df['helper_email']
+        else:
+            df['登録者'] = ''
+
+        df_display = df[[
+            'id', 'transaction_date', 'category', 'amount', 'vendor', '登録者'
+        ]].copy()
+        df_display.columns = ['ID', '取引日', '費目', '金額', '取引先', '登録者']
+        df_display['金額'] = df_display['金額'].apply(lambda x: format_currency(x))
+
+        st.dataframe(
+            df_display,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        # ヘルパー別サマリ (参考表示)
+        st.subheader("ヘルパー別サマリ")
+        summary_df = df.copy()
+        summary_df['登録者'] = summary_df.get('登録者', '')
+        by_helper = summary_df.groupby('登録者').agg(
+            件数=('id', 'count'),
+            合計=('amount', 'sum'),
+        ).reset_index().sort_values('合計', ascending=False)
+        by_helper['合計'] = by_helper['合計'].apply(lambda x: format_currency(x))
+        st.dataframe(by_helper, use_container_width=True, hide_index=True)
+
+        # Excel出力
+        st.subheader("📥 税理士提出用Excel")
+        excel_data = create_excel_download(
+            results,
+            date_from=date_from.isoformat() if date_from else None,
+            date_to=date_to.isoformat() if date_to else None,
+            include_helper=True,
+        )
+        filename = f"経費明細_全員_{date_from.isoformat()}_{date_to.isoformat()}.xlsx"
+        st.download_button(
+            label="Excelファイルをダウンロード",
+            data=excel_data,
+            file_name=filename,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+
+
 # ===== ページ4: 監査ログ =====
 def page_audit_log(user: dict):
     st.title("📊 監査ログ")
@@ -770,24 +884,20 @@ def page_audit_log(user: dict):
     あなたが登録したレシートの登録・更新・削除操作が記録されています。
     """)
 
-    # フィルタオプション
+    # フィルタオプション (スマホ対応: 1カラム縦積み)
     with st.expander("🔎 フィルタ", expanded=False):
-        col1, col2 = st.columns(2)
+        filter_receipt_id = st.number_input(
+            "レシートID（空白で全件表示）",
+            value=0,
+            min_value=0,
+            step=1,
+            format="%d"
+        )
 
-        with col1:
-            filter_receipt_id = st.number_input(
-                "レシートID（空白で全件表示）",
-                value=0,
-                min_value=0,
-                step=1,
-                format="%d"
-            )
-
-        with col2:
-            filter_action = st.selectbox(
-                "操作タイプ",
-                options=["", "INSERT", "UPDATE", "DELETE"]
-            )
+        filter_action = st.selectbox(
+            "操作タイプ",
+            options=["", "INSERT", "UPDATE", "DELETE"]
+        )
 
     # ログ取得 (自分のレシートのみ)
     all_logs = get_audit_log(helper_email=helper_email)
@@ -842,15 +952,24 @@ def main():
     st.sidebar.caption(helper_email)
     st.sidebar.divider()
 
+    # 管理者のみ「税理士提出」ページを表示
+    admin_user = is_admin(helper_email)
+    page_options = [
+        "📝 レシート登録",
+        "🔍 検索・一覧",
+        "📋 詳細・編集",
+        "📊 監査ログ",
+    ]
+    if admin_user:
+        page_options.append("📊 税理士提出 (管理者)")
+
     page = st.sidebar.radio(
         "ページを選択",
-        options=[
-            "📝 レシート登録",
-            "🔍 検索・一覧",
-            "📋 詳細・編集",
-            "📊 監査ログ"
-        ],
+        options=page_options,
     )
+
+    if admin_user:
+        st.sidebar.success("👑 管理者権限")
 
     st.sidebar.divider()
 
@@ -890,6 +1009,8 @@ def main():
         page_detail_and_edit(user)
     elif page == "📊 監査ログ":
         page_audit_log(user)
+    elif page == "📊 税理士提出 (管理者)":
+        page_tax_report(user)
 
 
 if __name__ == "__main__":

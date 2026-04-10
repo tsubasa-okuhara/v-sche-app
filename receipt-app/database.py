@@ -208,6 +208,36 @@ def sign_out_helper() -> None:
         pass
 
 
+def _get_admin_emails() -> List[str]:
+    """
+    管理者メールアドレス一覧を取得。
+    優先順位:
+    1. 環境変数 ADMIN_EMAILS (カンマ区切り)
+    2. Streamlit secrets の [admin] emails (リスト)
+    """
+    raw = os.environ.get("ADMIN_EMAILS", "")
+    if raw:
+        return [e.strip().lower() for e in raw.split(",") if e.strip()]
+
+    try:
+        import streamlit as st
+        if hasattr(st, "secrets") and "admin" in st.secrets:
+            emails = st.secrets["admin"].get("emails", [])
+            if isinstance(emails, str):
+                return [e.strip().lower() for e in emails.split(",") if e.strip()]
+            return [str(e).strip().lower() for e in emails]
+    except Exception:
+        pass
+    return []
+
+
+def is_admin(email: str) -> bool:
+    """メールアドレスが管理者かどうか"""
+    if not email:
+        return False
+    return email.strip().lower() in _get_admin_emails()
+
+
 # ============================================================
 # SQLite 実装
 # ============================================================
@@ -817,6 +847,109 @@ def get_unique_vendors(helper_email: str) -> List[str]:
     rows = cursor.fetchall()
     conn.close()
     return [row[0] for row in rows if row[0]]
+
+
+def search_all_receipts(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    amount_min: Optional[float] = None,
+    amount_max: Optional[float] = None,
+    vendor: Optional[str] = None,
+    category: Optional[str] = None,
+) -> List[Dict]:
+    """
+    管理者用: 全ヘルパーのレシートを検索 (helper_email でスコープしない)
+    ※呼び出し側で is_admin チェックを必ず行うこと
+    """
+    client = _get_supabase_client()
+    if client is not None:
+        try:
+            q = client.table("receipts").select("*").eq("is_deleted", False)
+            if date_from:
+                q = q.gte("transaction_date", date_from)
+            if date_to:
+                q = q.lte("transaction_date", date_to)
+            if amount_min is not None:
+                q = q.gte("amount", amount_min)
+            if amount_max is not None:
+                q = q.lte("amount", amount_max)
+            if vendor:
+                q = q.ilike("vendor", f"%{vendor}%")
+            if category:
+                q = q.eq("category", category)
+            q = q.order("transaction_date", desc=True)
+            res = q.execute()
+            return res.data or []
+        except Exception as e:
+            print(f"Supabase全件検索エラー: {e}")
+            return []
+
+    conn = _sqlite_conn()
+    cursor = conn.cursor()
+    query = "SELECT * FROM receipts WHERE is_deleted = 0"
+    params: list = []
+    if date_from:
+        query += " AND transaction_date >= ?"
+        params.append(date_from)
+    if date_to:
+        query += " AND transaction_date <= ?"
+        params.append(date_to)
+    if amount_min is not None:
+        query += " AND amount >= ?"
+        params.append(amount_min)
+    if amount_max is not None:
+        query += " AND amount <= ?"
+        params.append(amount_max)
+    if vendor:
+        query += " AND vendor LIKE ?"
+        params.append(f"%{vendor}%")
+    if category:
+        query += " AND category = ?"
+        params.append(category)
+    query += " ORDER BY transaction_date DESC"
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def get_all_receipt_stats(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> Dict:
+    """管理者用: 全ヘルパーのレシート統計情報"""
+    client = _get_supabase_client()
+    if client is not None:
+        try:
+            q = client.table("receipts").select("amount").eq("is_deleted", False)
+            if date_from:
+                q = q.gte("transaction_date", date_from)
+            if date_to:
+                q = q.lte("transaction_date", date_to)
+            res = q.execute()
+            rows = res.data or []
+            return {
+                "count": len(rows),
+                "total": sum((r.get("amount") or 0) for r in rows),
+            }
+        except Exception as e:
+            print(f"Supabase全件統計エラー: {e}")
+            return {"count": 0, "total": 0.0}
+
+    conn = _sqlite_conn()
+    cursor = conn.cursor()
+    query = "SELECT COUNT(*) as count, SUM(amount) as total FROM receipts WHERE is_deleted = 0"
+    params: list = []
+    if date_from:
+        query += " AND transaction_date >= ?"
+        params.append(date_from)
+    if date_to:
+        query += " AND transaction_date <= ?"
+        params.append(date_to)
+    cursor.execute(query, params)
+    row = cursor.fetchone()
+    conn.close()
+    return {"count": row["count"] or 0, "total": row["total"] or 0.0}
 
 
 def get_receipt_stats(
