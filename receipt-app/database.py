@@ -8,6 +8,12 @@
 
 環境変数 SUPABASE_URL / SUPABASE_KEY または Streamlit secrets に
 [supabase] セクションがあれば Supabase を使用。
+
+マルチユーザー対応:
+- 各レシートは helper_email カラムで所有者を管理
+- 全ての検索・更新・削除は helper_email でスコープされる
+- 認証は Supabase Auth (メール + パスワード) を使用
+- helper_master テーブルをホワイトリストとして利用
 """
 
 import os
@@ -72,6 +78,120 @@ def _use_supabase() -> bool:
 
 
 # ============================================================
+# 認証 (Supabase Auth + helper_master ホワイトリスト)
+# ============================================================
+
+def get_helper_by_email(email: str) -> Optional[Dict]:
+    """
+    helper_master テーブルから email で helper 情報を取得。
+    ローカル SQLite モードでは常に None (認証不要)。
+    """
+    if not email:
+        return None
+    client = _get_supabase_client()
+    if client is None:
+        return None
+    try:
+        res = client.table("helper_master").select("*").eq("helper_email", email).execute()
+        if res.data:
+            return res.data[0]
+    except Exception as e:
+        print(f"helper_master 取得エラー: {e}")
+    return None
+
+
+def sign_up_helper(email: str, password: str) -> Dict:
+    """
+    ヘルパー新規登録。
+    - helper_master に登録されているメールかをホワイトリストチェック
+    - Supabase Auth でユーザー作成
+    Returns: {"ok": bool, "error": str, "helper": dict}
+    """
+    email = (email or "").strip().lower()
+    if not email or not password:
+        return {"ok": False, "error": "メールとパスワードを入力してください", "helper": None}
+
+    if len(password) < 8:
+        return {"ok": False, "error": "パスワードは8文字以上にしてください", "helper": None}
+
+    client = _get_supabase_client()
+    if client is None:
+        return {"ok": False, "error": "Supabase が設定されていません", "helper": None}
+
+    # ホワイトリストチェック (helper_master に大文字小文字問わず存在するか)
+    try:
+        res = client.table("helper_master").select("*").ilike("helper_email", email).execute()
+        if not res.data:
+            return {
+                "ok": False,
+                "error": "このメールアドレスは登録されていません。管理者にお問い合わせください。",
+                "helper": None,
+            }
+        helper = res.data[0]
+    except Exception as e:
+        return {"ok": False, "error": f"helper_master 確認エラー: {e}", "helper": None}
+
+    # Supabase Auth でサインアップ
+    try:
+        auth_res = client.auth.sign_up({"email": email, "password": password})
+        if auth_res.user is None:
+            return {
+                "ok": False,
+                "error": "アカウント作成に失敗しました (既に登録済みの可能性があります)",
+                "helper": None,
+            }
+        return {"ok": True, "error": "", "helper": helper}
+    except Exception as e:
+        msg = str(e)
+        if "already registered" in msg.lower() or "already_exists" in msg.lower():
+            return {
+                "ok": False,
+                "error": "このメールアドレスは既に登録済みです。ログインしてください。",
+                "helper": None,
+            }
+        return {"ok": False, "error": f"サインアップエラー: {msg}", "helper": None}
+
+
+def sign_in_helper(email: str, password: str) -> Dict:
+    """
+    ヘルパーログイン。
+    Returns: {"ok": bool, "error": str, "helper": dict, "session": any}
+    """
+    email = (email or "").strip().lower()
+    if not email or not password:
+        return {"ok": False, "error": "メールとパスワードを入力してください", "helper": None, "session": None}
+
+    client = _get_supabase_client()
+    if client is None:
+        return {"ok": False, "error": "Supabase が設定されていません", "helper": None, "session": None}
+
+    try:
+        auth_res = client.auth.sign_in_with_password({"email": email, "password": password})
+        if auth_res.user is None:
+            return {"ok": False, "error": "メールアドレスまたはパスワードが違います", "helper": None, "session": None}
+    except Exception as e:
+        return {"ok": False, "error": "メールアドレスまたはパスワードが違います", "helper": None, "session": None}
+
+    # helper_master から名前を取得
+    helper = get_helper_by_email(email)
+    if helper is None:
+        return {"ok": False, "error": "helper_master に登録がありません", "helper": None, "session": None}
+
+    return {"ok": True, "error": "", "helper": helper, "session": auth_res.session}
+
+
+def sign_out_helper() -> None:
+    """ログアウト (Supabase 側のセッションも破棄)"""
+    client = _get_supabase_client()
+    if client is None:
+        return
+    try:
+        client.auth.sign_out()
+    except Exception:
+        pass
+
+
+# ============================================================
 # SQLite 実装
 # ============================================================
 
@@ -88,6 +208,8 @@ def _sqlite_init():
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS receipts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            helper_email TEXT,
+            helper_name TEXT,
             transaction_date TEXT NOT NULL,
             amount REAL NOT NULL,
             vendor TEXT,
@@ -105,6 +227,14 @@ def _sqlite_init():
             created_by TEXT DEFAULT 'system'
         )
     ''')
+
+    # SQLite で既存テーブルに helper_email が無い場合は追加 (ローカル開発の互換性)
+    cursor.execute("PRAGMA table_info(receipts)")
+    cols = {row[1] for row in cursor.fetchall()}
+    if "helper_email" not in cols:
+        cursor.execute("ALTER TABLE receipts ADD COLUMN helper_email TEXT")
+    if "helper_name" not in cols:
+        cursor.execute("ALTER TABLE receipts ADD COLUMN helper_name TEXT")
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS receipt_audit_log (
@@ -147,15 +277,10 @@ def _sqlite_init():
 # ============================================================
 
 def _supabase_init():
-    """
-    Supabase側はテーブルを SQL で事前に作成しておく必要があります。
-    supabase_schema.sql を Supabase SQL Editor で実行してください。
-    ここではカテゴリーの初期データのみ投入。
-    """
+    """Supabase 側は SQL で事前にテーブル作成済みが前提"""
     client = _get_supabase_client()
     if client is None:
         return
-
     try:
         res = client.table("receipt_categories").select("id").limit(1).execute()
         if not res.data:
@@ -167,7 +292,7 @@ def _supabase_init():
 
 
 # ============================================================
-# 公開API (SQLite / Supabase を自動切替)
+# 公開API (SQLite / Supabase を自動切替、helper_email でスコープ)
 # ============================================================
 
 def get_db_connection():
@@ -193,16 +318,22 @@ def insert_receipt(
     image_hash: str,
     image_dpi: int,
     image_color_mode: str,
+    helper_email: str,
+    helper_name: str = "",
     ocr_raw_text: str = None,
-    created_by: str = "system"
+    created_by: str = None,
 ) -> int:
-    """新規レシートを登録"""
+    """新規レシートを登録 (helper_email必須)"""
     now = datetime.now().isoformat()
+    if created_by is None:
+        created_by = helper_email or "system"
 
     client = _get_supabase_client()
     if client is not None:
         try:
             res = client.table("receipts").insert({
+                "helper_email": helper_email,
+                "helper_name": helper_name,
                 "transaction_date": transaction_date,
                 "amount": amount,
                 "vendor": vendor,
@@ -241,12 +372,12 @@ def insert_receipt(
     try:
         cursor.execute('''
             INSERT INTO receipts
-            (transaction_date, amount, vendor, category, description,
+            (helper_email, helper_name, transaction_date, amount, vendor, category, description,
              image_path, image_hash, image_dpi, image_color_mode,
              scan_date, ocr_raw_text, created_at, updated_at, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
-            transaction_date, amount, vendor, category, description,
+            helper_email, helper_name, transaction_date, amount, vendor, category, description,
             image_path, image_hash, image_dpi, image_color_mode,
             now, ocr_raw_text, now, now, created_by
         ))
@@ -269,21 +400,34 @@ def insert_receipt(
 
 def update_receipt(
     receipt_id: int,
+    helper_email: str,
     transaction_date: str = None,
     amount: float = None,
     vendor: str = None,
     category: str = None,
     description: str = None,
     reason: str = "",
-    updated_by: str = "system"
+    updated_by: str = None,
 ) -> bool:
-    """既存レシートを更新（監査ログ記録付き）"""
+    """
+    既存レシートを更新（監査ログ記録付き）
+    helper_email が一致しないレシートは更新不可 (所有権チェック)
+    """
     now = datetime.now().isoformat()
+    if updated_by is None:
+        updated_by = helper_email or "system"
 
     client = _get_supabase_client()
     if client is not None:
         try:
-            res = client.table("receipts").select("*").eq("id", receipt_id).eq("is_deleted", False).execute()
+            res = (
+                client.table("receipts")
+                .select("*")
+                .eq("id", receipt_id)
+                .eq("is_deleted", False)
+                .eq("helper_email", helper_email)
+                .execute()
+            )
             if not res.data:
                 return False
             current = res.data[0]
@@ -330,7 +474,10 @@ def update_receipt(
     # SQLite
     conn = _sqlite_conn()
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM receipts WHERE id = ? AND is_deleted = 0', (receipt_id,))
+    cursor.execute(
+        'SELECT * FROM receipts WHERE id = ? AND is_deleted = 0 AND (helper_email = ? OR helper_email IS NULL)',
+        (receipt_id, helper_email),
+    )
     row = cursor.fetchone()
     if not row:
         conn.close()
@@ -377,14 +524,30 @@ def update_receipt(
     return True
 
 
-def soft_delete_receipt(receipt_id: int, reason: str = "", deleted_by: str = "system") -> bool:
-    """レシートを論理削除（物理削除は禁止）"""
+def soft_delete_receipt(
+    receipt_id: int,
+    helper_email: str,
+    reason: str = "",
+    deleted_by: str = None,
+) -> bool:
+    """
+    レシートを論理削除（物理削除は禁止）
+    helper_email が一致しないレシートは削除不可
+    """
     now = datetime.now().isoformat()
+    if deleted_by is None:
+        deleted_by = helper_email or "system"
 
     client = _get_supabase_client()
     if client is not None:
         try:
-            res = client.table("receipts").select("is_deleted").eq("id", receipt_id).execute()
+            res = (
+                client.table("receipts")
+                .select("is_deleted")
+                .eq("id", receipt_id)
+                .eq("helper_email", helper_email)
+                .execute()
+            )
             if not res.data or res.data[0]["is_deleted"]:
                 return False
 
@@ -407,7 +570,10 @@ def soft_delete_receipt(receipt_id: int, reason: str = "", deleted_by: str = "sy
 
     conn = _sqlite_conn()
     cursor = conn.cursor()
-    cursor.execute('SELECT is_deleted FROM receipts WHERE id = ?', (receipt_id,))
+    cursor.execute(
+        'SELECT is_deleted FROM receipts WHERE id = ? AND (helper_email = ? OR helper_email IS NULL)',
+        (receipt_id, helper_email),
+    )
     row = cursor.fetchone()
     if not row or row['is_deleted'] == 1:
         conn.close()
@@ -431,17 +597,23 @@ def soft_delete_receipt(receipt_id: int, reason: str = "", deleted_by: str = "sy
 
 
 def search_receipts(
+    helper_email: str,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     amount_min: Optional[float] = None,
     amount_max: Optional[float] = None,
-    vendor: Optional[str] = None
+    vendor: Optional[str] = None,
 ) -> List[Dict]:
-    """レシートを検索"""
+    """レシートを検索 (自分のレシートのみ)"""
     client = _get_supabase_client()
     if client is not None:
         try:
-            q = client.table("receipts").select("*").eq("is_deleted", False)
+            q = (
+                client.table("receipts")
+                .select("*")
+                .eq("is_deleted", False)
+                .eq("helper_email", helper_email)
+            )
             if date_from:
                 q = q.gte("transaction_date", date_from)
             if date_to:
@@ -461,8 +633,8 @@ def search_receipts(
 
     conn = _sqlite_conn()
     cursor = conn.cursor()
-    query = 'SELECT * FROM receipts WHERE is_deleted = 0'
-    params = []
+    query = 'SELECT * FROM receipts WHERE is_deleted = 0 AND (helper_email = ? OR helper_email IS NULL)'
+    params = [helper_email]
     if date_from:
         query += ' AND transaction_date >= ?'
         params.append(date_from)
@@ -486,12 +658,19 @@ def search_receipts(
     return [dict(row) for row in rows]
 
 
-def get_receipt_by_id(receipt_id: int) -> Optional[Dict]:
-    """IDでレシートを取得"""
+def get_receipt_by_id(receipt_id: int, helper_email: str) -> Optional[Dict]:
+    """IDでレシートを取得 (自分のレシートのみ)"""
     client = _get_supabase_client()
     if client is not None:
         try:
-            res = client.table("receipts").select("*").eq("id", receipt_id).eq("is_deleted", False).execute()
+            res = (
+                client.table("receipts")
+                .select("*")
+                .eq("id", receipt_id)
+                .eq("is_deleted", False)
+                .eq("helper_email", helper_email)
+                .execute()
+            )
             return res.data[0] if res.data else None
         except Exception as e:
             print(f"Supabase取得エラー: {e}")
@@ -499,20 +678,41 @@ def get_receipt_by_id(receipt_id: int) -> Optional[Dict]:
 
     conn = _sqlite_conn()
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM receipts WHERE id = ? AND is_deleted = 0', (receipt_id,))
+    cursor.execute(
+        'SELECT * FROM receipts WHERE id = ? AND is_deleted = 0 AND (helper_email = ? OR helper_email IS NULL)',
+        (receipt_id, helper_email),
+    )
     row = cursor.fetchone()
     conn.close()
     return dict(row) if row else None
 
 
-def get_audit_log(receipt_id: Optional[int] = None) -> List[Dict]:
-    """監査ログを取得"""
+def get_audit_log(helper_email: str, receipt_id: Optional[int] = None) -> List[Dict]:
+    """
+    監査ログを取得 (自分のレシートの分のみ)
+    ※receipt_id が指定されない場合は、自分のレシートに関する全ログを返す
+    """
     client = _get_supabase_client()
     if client is not None:
         try:
+            # 自分のレシートID一覧を取得
+            my = (
+                client.table("receipts")
+                .select("id")
+                .eq("helper_email", helper_email)
+                .execute()
+            )
+            my_ids = [r["id"] for r in (my.data or [])]
+            if not my_ids:
+                return []
+
             q = client.table("receipt_audit_log").select("*")
             if receipt_id:
+                if receipt_id not in my_ids:
+                    return []
                 q = q.eq("receipt_id", receipt_id)
+            else:
+                q = q.in_("receipt_id", my_ids)
             q = q.order("changed_at", desc=True)
             res = q.execute()
             return res.data or []
@@ -524,22 +724,26 @@ def get_audit_log(receipt_id: Optional[int] = None) -> List[Dict]:
     cursor = conn.cursor()
     if receipt_id:
         cursor.execute('''
-            SELECT * FROM receipt_audit_log
-            WHERE receipt_id = ?
-            ORDER BY changed_at DESC
-        ''', (receipt_id,))
+            SELECT l.* FROM receipt_audit_log l
+            JOIN receipts r ON l.receipt_id = r.id
+            WHERE l.receipt_id = ?
+              AND (r.helper_email = ? OR r.helper_email IS NULL)
+            ORDER BY l.changed_at DESC
+        ''', (receipt_id, helper_email))
     else:
         cursor.execute('''
-            SELECT * FROM receipt_audit_log
-            ORDER BY changed_at DESC
-        ''')
+            SELECT l.* FROM receipt_audit_log l
+            JOIN receipts r ON l.receipt_id = r.id
+            WHERE (r.helper_email = ? OR r.helper_email IS NULL)
+            ORDER BY l.changed_at DESC
+        ''', (helper_email,))
     rows = cursor.fetchall()
     conn.close()
     return [dict(row) for row in rows]
 
 
 def get_categories(active_only: bool = True) -> List[str]:
-    """カテゴリー一覧を取得"""
+    """カテゴリー一覧を取得 (ユーザー共通)"""
     client = _get_supabase_client()
     if client is not None:
         try:
@@ -564,12 +768,18 @@ def get_categories(active_only: bool = True) -> List[str]:
     return [row[0] for row in rows]
 
 
-def get_unique_vendors() -> List[str]:
-    """登録されている全ユニークな取引先を取得"""
+def get_unique_vendors(helper_email: str) -> List[str]:
+    """登録されている自分のユニークな取引先を取得"""
     client = _get_supabase_client()
     if client is not None:
         try:
-            res = client.table("receipts").select("vendor").eq("is_deleted", False).execute()
+            res = (
+                client.table("receipts")
+                .select("vendor")
+                .eq("is_deleted", False)
+                .eq("helper_email", helper_email)
+                .execute()
+            )
             vendors = set()
             for row in (res.data or []):
                 if row.get("vendor"):
@@ -584,19 +794,29 @@ def get_unique_vendors() -> List[str]:
     cursor.execute('''
         SELECT DISTINCT vendor FROM receipts
         WHERE is_deleted = 0 AND vendor IS NOT NULL
+          AND (helper_email = ? OR helper_email IS NULL)
         ORDER BY vendor
-    ''')
+    ''', (helper_email,))
     rows = cursor.fetchall()
     conn.close()
     return [row[0] for row in rows if row[0]]
 
 
-def get_receipt_stats(date_from: Optional[str] = None, date_to: Optional[str] = None) -> Dict:
-    """レシート統計情報を取得"""
+def get_receipt_stats(
+    helper_email: str,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> Dict:
+    """レシート統計情報を取得 (自分のレシートのみ)"""
     client = _get_supabase_client()
     if client is not None:
         try:
-            q = client.table("receipts").select("amount").eq("is_deleted", False)
+            q = (
+                client.table("receipts")
+                .select("amount")
+                .eq("is_deleted", False)
+                .eq("helper_email", helper_email)
+            )
             if date_from:
                 q = q.gte("transaction_date", date_from)
             if date_to:
@@ -613,8 +833,11 @@ def get_receipt_stats(date_from: Optional[str] = None, date_to: Optional[str] = 
 
     conn = _sqlite_conn()
     cursor = conn.cursor()
-    query = 'SELECT COUNT(*) as count, SUM(amount) as total FROM receipts WHERE is_deleted = 0'
-    params = []
+    query = '''
+        SELECT COUNT(*) as count, SUM(amount) as total FROM receipts
+        WHERE is_deleted = 0 AND (helper_email = ? OR helper_email IS NULL)
+    '''
+    params = [helper_email]
     if date_from:
         query += ' AND transaction_date >= ?'
         params.append(date_from)

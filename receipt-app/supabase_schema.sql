@@ -15,6 +15,8 @@
 -- receipts テーブル (メイン)
 CREATE TABLE IF NOT EXISTS receipts (
     id                BIGSERIAL PRIMARY KEY,
+    helper_email      TEXT NOT NULL,              -- 所有者 (helper_master.helper_email)
+    helper_name       TEXT,                        -- 表示用の名前
     transaction_date  DATE NOT NULL,
     amount            NUMERIC(12, 2) NOT NULL,
     vendor            TEXT,
@@ -32,6 +34,7 @@ CREATE TABLE IF NOT EXISTS receipts (
     created_by        TEXT DEFAULT 'system'
 );
 
+CREATE INDEX IF NOT EXISTS idx_receipts_helper_email     ON receipts(helper_email);
 CREATE INDEX IF NOT EXISTS idx_receipts_transaction_date ON receipts(transaction_date);
 CREATE INDEX IF NOT EXISTS idx_receipts_vendor           ON receipts(vendor);
 CREATE INDEX IF NOT EXISTS idx_receipts_category         ON receipts(category);

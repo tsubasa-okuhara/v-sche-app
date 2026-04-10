@@ -1,12 +1,11 @@
 """
 経費精算・レシート管理 Streamlit アプリケーション
-電子帳簿保存法対応
+電子帳簿保存法対応 / マルチユーザー対応
 
 使用方法: streamlit run app.py
 """
 
 import os
-import hmac
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
@@ -14,12 +13,12 @@ from io import BytesIO
 import openpyxl
 from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 from openpyxl.utils import get_column_letter
-from pathlib import Path
 
 from database import (
     init_db, insert_receipt, update_receipt, soft_delete_receipt,
     search_receipts, get_receipt_by_id, get_audit_log,
-    get_categories, get_unique_vendors, get_receipt_stats
+    get_categories, get_unique_vendors, get_receipt_stats,
+    sign_in_helper, sign_up_helper, sign_out_helper,
 )
 from image_utils import validate_image, compute_hash, save_image, load_image_for_display, auto_crop_receipt
 from ocr_utils import extract_text, extract_receipt_info
@@ -62,58 +61,75 @@ if 'initialized' not in st.session_state:
     st.session_state.initialized = True
 
 
-# ===== パスワード認証 =====
-def _get_app_password() -> str:
-    """
-    アプリパスワードを取得する優先順位:
-    1. 環境変数 APP_PASSWORD
-    2. Streamlit secrets の [auth] password
-    3. デフォルト (ローカル開発用): 'changeme'
-    """
-    pw = os.environ.get("APP_PASSWORD")
-    if pw:
-        return pw
-    try:
-        if hasattr(st, "secrets") and "auth" in st.secrets:
-            secret_pw = st.secrets["auth"].get("password")
-            if secret_pw:
-                return secret_pw
-    except Exception:
-        pass
-    return "changeme"
+# ===== 認証 (Supabase Auth + helper_master ホワイトリスト) =====
+
+def _get_current_user() -> dict:
+    """現在のログインユーザー情報 (未ログインなら None)"""
+    return st.session_state.get("current_user")
 
 
-def check_password() -> bool:
+def login_page() -> bool:
     """
-    パスワード認証。正しく認証されるまで True を返さない。
-    認証後は st.session_state['authenticated'] = True が保持される。
+    ログイン / 新規登録ページ。
+    成功時は st.session_state['current_user'] に helper 情報を保存して True を返す。
+    未ログインの間は False を返す。
     """
-    if st.session_state.get("authenticated"):
+    if _get_current_user():
         return True
 
-    def _verify():
-        expected = _get_app_password()
-        entered = st.session_state.get("_password_input", "")
-        if hmac.compare_digest(entered, expected):
-            st.session_state["authenticated"] = True
-            st.session_state["_password_input"] = ""
-        else:
-            st.session_state["_password_wrong"] = True
-
     st.title("🔐 経費精算・レシート管理")
-    st.caption("電子帳簿保存法対応システム")
+    st.caption("電子帳簿保存法対応システム / ヘルパー専用")
     st.write("")
-    st.info("このアプリを使用するにはパスワードが必要です。")
 
-    st.text_input(
-        "パスワード",
-        type="password",
-        key="_password_input",
-        on_change=_verify,
-    )
+    tab_login, tab_signup = st.tabs(["🔑 ログイン", "📝 新規登録"])
 
-    if st.session_state.get("_password_wrong"):
-        st.error("❌ パスワードが違います")
+    # --- ログインタブ ---
+    with tab_login:
+        st.write("登録済みのヘルパーさんはこちらからログインしてください。")
+        with st.form("login_form"):
+            login_email = st.text_input("メールアドレス", key="login_email")
+            login_password = st.text_input("パスワード", type="password", key="login_password")
+            submit_login = st.form_submit_button("ログイン", use_container_width=True, type="primary")
+
+        if submit_login:
+            result = sign_in_helper(login_email, login_password)
+            if result["ok"]:
+                helper = result["helper"] or {}
+                st.session_state["current_user"] = {
+                    "helper_email": (login_email or "").strip().lower(),
+                    "helper_name": helper.get("helper_name", ""),
+                }
+                st.rerun()
+            else:
+                st.error(f"❌ {result['error']}")
+
+    # --- 新規登録タブ ---
+    with tab_signup:
+        st.write("初めて利用する方は、こちらからアカウントを作成してください。")
+        st.caption("※ 管理者がヘルパーマスタに登録済みのメールアドレスのみ登録できます。")
+        with st.form("signup_form"):
+            signup_email = st.text_input("メールアドレス", key="signup_email")
+            signup_password = st.text_input(
+                "パスワード (8文字以上)",
+                type="password",
+                key="signup_password",
+            )
+            signup_password_confirm = st.text_input(
+                "パスワード（確認）",
+                type="password",
+                key="signup_password_confirm",
+            )
+            submit_signup = st.form_submit_button("アカウント作成", use_container_width=True, type="primary")
+
+        if submit_signup:
+            if signup_password != signup_password_confirm:
+                st.error("❌ パスワードが一致しません")
+            else:
+                result = sign_up_helper(signup_email, signup_password)
+                if result["ok"]:
+                    st.success("✅ アカウントを作成しました。ログインタブからログインしてください。")
+                else:
+                    st.error(f"❌ {result['error']}")
 
     return False
 
@@ -214,8 +230,11 @@ def create_excel_download(results: list, date_from=None, date_to=None) -> bytes:
 
 
 # ===== ページ1: レシート登録 =====
-def page_receipt_registration():
+def page_receipt_registration(user: dict):
     st.title("📝 レシート登録")
+
+    helper_email = user["helper_email"]
+    helper_name = user.get("helper_name", "")
 
     col1, col2 = st.columns([2, 1])
 
@@ -342,7 +361,7 @@ def page_receipt_registration():
                 )
 
             with col2:
-                vendors = get_unique_vendors()
+                vendors = get_unique_vendors(helper_email)
                 vendor_default = ocr_result['vendor'] if ocr_result['vendor'] and ocr_result['vendor'] in vendors else (vendors[0] if vendors else "")
 
                 vendor = st.selectbox(
@@ -394,23 +413,24 @@ def page_receipt_registration():
                             image_hash=image_data['hash'],
                             image_dpi=image_data['dpi'],
                             image_color_mode=image_data['color_mode'],
+                            helper_email=helper_email,
+                            helper_name=helper_name,
                             ocr_raw_text=ocr_result['raw_text'],
-                            created_by="user"
+                            created_by=helper_email,
                         )
 
                         st.success(f"✅ レシート登録完了！（ID: {receipt_id}）")
                         st.balloons()
-
-                        # フォームをリセット
-                        st.session_state.clear()
 
                     except Exception as e:
                         st.error(f"エラー: {str(e)}")
 
 
 # ===== ページ2: 検索・一覧 =====
-def page_search_and_list():
+def page_search_and_list(user: dict):
     st.title("🔍 検索・一覧")
+
+    helper_email = user["helper_email"]
 
     # 検索パネル
     with st.expander("🔎 検索条件", expanded=True):
@@ -431,7 +451,7 @@ def page_search_and_list():
             )
 
         with col3:
-            vendors = [""] + get_unique_vendors()
+            vendors = [""] + get_unique_vendors(helper_email)
             vendor = st.selectbox(
                 "取引先",
                 options=vendors,
@@ -461,6 +481,7 @@ def page_search_and_list():
     # 検索実行
     if st.button("検索", use_container_width=True, type="primary"):
         results = search_receipts(
+            helper_email=helper_email,
             date_from=date_from.isoformat() if date_from else None,
             date_to=date_to.isoformat() if date_to else None,
             amount_min=amount_min if amount_min > 0 else None,
@@ -471,6 +492,7 @@ def page_search_and_list():
         if results:
             # 統計情報
             stats = get_receipt_stats(
+                helper_email=helper_email,
                 date_from=date_from.isoformat(),
                 date_to=date_to.isoformat()
             )
@@ -542,15 +564,17 @@ def page_search_and_list():
 
 
 # ===== ページ3: 詳細・編集 =====
-def page_detail_and_edit():
+def page_detail_and_edit(user: dict):
     st.title("📋 詳細・編集")
+
+    helper_email = user["helper_email"]
 
     # レシート選択
     col1, col2 = st.columns([3, 1])
 
     with col1:
         # データベースの全レシートを取得
-        all_receipts = search_receipts()
+        all_receipts = search_receipts(helper_email=helper_email)
         if all_receipts:
             receipt_id = st.selectbox(
                 "レシートを選択",
@@ -566,7 +590,7 @@ def page_detail_and_edit():
             st.rerun()
 
     # レシート詳細を取得
-    receipt = get_receipt_by_id(receipt_id)
+    receipt = get_receipt_by_id(receipt_id, helper_email=helper_email)
 
     if not receipt:
         st.error("レシートが見つかりません")
@@ -627,13 +651,13 @@ def page_detail_and_edit():
             )
 
         with col2:
-            vendors = get_unique_vendors()
+            vendors = get_unique_vendors(helper_email)
             vendor_index = vendors.index(receipt['vendor']) if receipt['vendor'] in vendors else 0
 
             new_vendor = st.selectbox(
                 "取引先",
                 options=vendors,
-                index=vendor_index
+                index=vendor_index if vendors else 0
             )
 
             categories = get_categories()
@@ -670,19 +694,23 @@ def page_detail_and_edit():
                 st.error("変更理由を入力してください")
             else:
                 try:
-                    update_receipt(
+                    ok = update_receipt(
                         receipt_id=receipt_id,
+                        helper_email=helper_email,
                         transaction_date=new_date.isoformat(),
                         amount=float(new_amount),
                         vendor=new_vendor,
                         category=new_category,
                         description=new_description,
                         reason=change_reason,
-                        updated_by="user"
+                        updated_by=helper_email,
                     )
 
-                    st.success("✅ レシート情報を更新しました")
-                    st.rerun()
+                    if ok:
+                        st.success("✅ レシート情報を更新しました")
+                        st.rerun()
+                    else:
+                        st.error("更新できませんでした (所有者が違うかレシートが存在しません)")
 
                 except Exception as e:
                     st.error(f"エラー: {str(e)}")
@@ -692,14 +720,18 @@ def page_detail_and_edit():
                 st.error("削除理由を入力してください")
             else:
                 try:
-                    soft_delete_receipt(
+                    ok = soft_delete_receipt(
                         receipt_id=receipt_id,
+                        helper_email=helper_email,
                         reason=change_reason,
-                        deleted_by="user"
+                        deleted_by=helper_email,
                     )
 
-                    st.success("✅ レシートを論理削除しました")
-                    st.rerun()
+                    if ok:
+                        st.success("✅ レシートを論理削除しました")
+                        st.rerun()
+                    else:
+                        st.error("削除できませんでした (所有者が違うかレシートが存在しません)")
 
                 except Exception as e:
                     st.error(f"エラー: {str(e)}")
@@ -708,7 +740,7 @@ def page_detail_and_edit():
     st.divider()
     st.subheader("変更履歴")
 
-    audit_logs = get_audit_log(receipt_id)
+    audit_logs = get_audit_log(helper_email=helper_email, receipt_id=receipt_id)
 
     if audit_logs:
         audit_df = pd.DataFrame(audit_logs)
@@ -728,12 +760,14 @@ def page_detail_and_edit():
 
 
 # ===== ページ4: 監査ログ =====
-def page_audit_log():
+def page_audit_log(user: dict):
     st.title("📊 監査ログ")
+
+    helper_email = user["helper_email"]
 
     st.write("""
     電子帳簿保存法対応のための変更履歴です。
-    全レシートの登録・更新・削除操作が記録されています。
+    あなたが登録したレシートの登録・更新・削除操作が記録されています。
     """)
 
     # フィルタオプション
@@ -755,8 +789,8 @@ def page_audit_log():
                 options=["", "INSERT", "UPDATE", "DELETE"]
             )
 
-    # ログ取得
-    all_logs = get_audit_log()
+    # ログ取得 (自分のレシートのみ)
+    all_logs = get_audit_log(helper_email=helper_email)
 
     # フィルタ適用
     if filter_receipt_id > 0:
@@ -777,16 +811,6 @@ def page_audit_log():
 
         log_df_display.columns = ['ログID', '日時', 'レシートID', '操作', '項目', '変更前', '変更後', '変更者', '理由']
 
-        # 色分け（操作タイプ）
-        def color_action(action):
-            if action == 'INSERT':
-                return 'background-color: #d4edda'
-            elif action == 'UPDATE':
-                return 'background-color: #fff3cd'
-            elif action == 'DELETE':
-                return 'background-color: #f8d7da'
-            return ''
-
         st.dataframe(
             log_df_display,
             use_container_width=True,
@@ -799,12 +823,24 @@ def page_audit_log():
 
 # ===== メインアプリケーション =====
 def main():
-    # パスワード認証（失敗時は以降の処理をスキップ）
-    if not check_password():
+    # 認証 (失敗時は以降の処理をスキップ)
+    if not login_page():
         st.stop()
+
+    user = _get_current_user()
+    helper_email = user["helper_email"]
+    helper_name = user.get("helper_name", "")
 
     # サイドバーナビゲーション
     st.sidebar.title("🧾 経費精算・レシート管理")
+
+    # 現在のユーザー情報
+    st.sidebar.markdown(f"""
+    **ログイン中:**
+    {helper_name or helper_email}
+    """)
+    st.sidebar.caption(helper_email)
+    st.sidebar.divider()
 
     page = st.sidebar.radio(
         "ページを選択",
@@ -818,10 +854,10 @@ def main():
 
     st.sidebar.divider()
 
-    # 統計情報をサイドバーに表示
-    st.sidebar.subheader("📈 統計")
+    # 統計情報をサイドバーに表示 (自分のレシートのみ)
+    st.sidebar.subheader("📈 あなたの統計")
 
-    stats = get_receipt_stats()
+    stats = get_receipt_stats(helper_email=helper_email)
     col1, col2 = st.sidebar.columns(2)
 
     with col1:
@@ -836,23 +872,24 @@ def main():
     - 全操作が監査ログに記録されます
     - 物理削除は禁止（論理削除のみ）
     - 編集時は理由の記録が必須です
+    - レシートは登録者本人のみ閲覧・編集可能
     """)
 
     st.sidebar.divider()
     if st.sidebar.button("🚪 ログアウト"):
-        st.session_state["authenticated"] = False
-        st.session_state.pop("_password_wrong", None)
+        sign_out_helper()
+        st.session_state.pop("current_user", None)
         st.rerun()
 
     # ページ表示
     if page == "📝 レシート登録":
-        page_receipt_registration()
+        page_receipt_registration(user)
     elif page == "🔍 検索・一覧":
-        page_search_and_list()
+        page_search_and_list(user)
     elif page == "📋 詳細・編集":
-        page_detail_and_edit()
+        page_detail_and_edit(user)
     elif page == "📊 監査ログ":
-        page_audit_log()
+        page_audit_log(user)
 
 
 if __name__ == "__main__":
