@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Dict, Tuple, Optional
 from PIL import Image, ExifTags
 import io
-import numpy as np
 
 # 最小DPI要件
 MIN_DPI = 200
@@ -223,119 +222,9 @@ def load_image_for_display(relative_path: str) -> Optional[Image.Image]:
 
 def auto_crop_receipt(image_bytes: bytes) -> bytes:
     """
-    レシート部分を自動検出してクロップ（背景を除去）
-
-    検出された四角形が画像全体の25%以上の場合のみクロップ。
-    小さすぎる検出（文字やロゴの誤検出）は無視して元画像を返す。
-
-    Args:
-        image_bytes: 元画像のバイナリデータ
-
-    Returns:
-        クロップ済み画像のバイナリデータ（失敗時は元画像を返す）
+    レガシー互換用の no-op 関数。
+    Claude Vision API が背景込みの画像でも十分に認識できるため、
+    現在は画像を加工せずそのまま返します。
+    (opencv/numpy 依存を削除したため実装も削除)
     """
-    try:
-        import cv2
-
-        nparr = np.frombuffer(image_bytes, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-
-        if img is None:
-            return image_bytes
-
-        orig = img.copy()
-        h_orig, w_orig = img.shape[:2]
-        img_area = h_orig * w_orig
-
-        # 最小面積: 画像全体の25%以上でないとレシートとみなさない
-        MIN_RECEIPT_RATIO = 0.25
-
-        # 処理用にリサイズ（高速化）
-        scale = 500.0 / max(h_orig, w_orig)
-        resized = cv2.resize(img, None, fx=scale, fy=scale)
-        resized_area = resized.shape[0] * resized.shape[1]
-
-        # グレースケール → ぼかし → エッジ検出
-        gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
-        gray = cv2.GaussianBlur(gray, (5, 5), 0)
-        edged = cv2.Canny(gray, 50, 200)
-
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-        edged = cv2.dilate(edged, kernel, iterations=2)
-
-        contours, _ = cv2.findContours(edged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        if not contours:
-            return image_bytes
-
-        # 面積順にソート
-        contours = sorted(contours, key=cv2.contourArea, reverse=True)
-
-        # 四角形を探す（面積が十分大きいもののみ）
-        for c in contours[:5]:
-            area = cv2.contourArea(c)
-
-            # 面積が画像の25%未満なら小さすぎる→スキップ
-            if area < resized_area * MIN_RECEIPT_RATIO:
-                continue
-
-            peri = cv2.arcLength(c, True)
-            approx = cv2.approxPolyDP(c, 0.02 * peri, True)
-
-            if len(approx) == 4:
-                # 四角形が見つかった → 射影変換で正面補正
-                pts = approx.reshape(4, 2).astype(np.float32) / scale
-                rect = _order_points(pts)
-
-                width_a = np.linalg.norm(rect[2] - rect[3])
-                width_b = np.linalg.norm(rect[1] - rect[0])
-                max_width = int(max(width_a, width_b))
-
-                height_a = np.linalg.norm(rect[1] - rect[2])
-                height_b = np.linalg.norm(rect[0] - rect[3])
-                max_height = int(max(height_a, height_b))
-
-                # クロップ後が小さすぎないかチェック
-                if max_width * max_height < img_area * MIN_RECEIPT_RATIO:
-                    continue
-
-                dst = np.array([
-                    [0, 0],
-                    [max_width - 1, 0],
-                    [max_width - 1, max_height - 1],
-                    [0, max_height - 1]
-                ], dtype=np.float32)
-
-                M = cv2.getPerspectiveTransform(rect, dst)
-                cropped = cv2.warpPerspective(orig, M, (max_width, max_height))
-
-                success, buffer = cv2.imencode('.jpg', cropped, [cv2.IMWRITE_JPEG_QUALITY, 95])
-                if success:
-                    return buffer.tobytes()
-
-        # 十分な大きさの四角形が見つからない → 元画像をそのまま返す
-        return image_bytes
-
-    except ImportError:
-        # OpenCVがない場合は元画像をそのまま返す
-        return image_bytes
-    except Exception as e:
-        print(f"自動クロップエラー: {str(e)}")
-        return image_bytes
-
-
-def _order_points(pts: np.ndarray) -> np.ndarray:
-    """4つの頂点を 左上→右上→右下→左下 の順に整列"""
-    rect = np.zeros((4, 2), dtype=np.float32)
-
-    # 合計が最小 = 左上、最大 = 右下
-    s = pts.sum(axis=1)
-    rect[0] = pts[np.argmin(s)]
-    rect[2] = pts[np.argmax(s)]
-
-    # 差が最小 = 右上、最大 = 左下
-    d = np.diff(pts, axis=1)
-    rect[1] = pts[np.argmin(d)]
-    rect[3] = pts[np.argmax(d)]
-
-    return rect
+    return image_bytes

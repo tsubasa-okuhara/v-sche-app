@@ -21,8 +21,8 @@ from database import (
     sign_in_helper, sign_up_helper, sign_out_helper,
     is_admin, search_all_receipts, get_all_receipt_stats,
 )
-from image_utils import validate_image, compute_hash, save_image, load_image_for_display, auto_crop_receipt
-from ocr_utils import extract_text, extract_receipt_info
+from image_utils import validate_image, compute_hash, save_image, load_image_for_display
+from ocr_utils import extract_receipt_from_image
 
 # ===== ページ設定 =====
 # スマホ対応: サイドバーを初期非表示、縦積みレイアウトのため layout=centered
@@ -324,17 +324,6 @@ def page_receipt_registration(user: dict):
 
         # 検証成功時の処理
         if validation['is_valid']:
-            # ===== 自動クロップ =====
-            with st.spinner("レシートを自動検出中..."):
-                cropped_bytes = auto_crop_receipt(image_bytes)
-
-            if cropped_bytes != image_bytes:
-                st.success("✅ レシート部分を自動クロップしました")
-                st.image(cropped_bytes, caption="クロップ画像", width="stretch")
-                ocr_target_bytes = cropped_bytes
-            else:
-                ocr_target_bytes = image_bytes
-
             image_data = {
                 'bytes': image_bytes,  # 保存は元画像（法的要件）
                 'hash': compute_hash(image_bytes),
@@ -342,22 +331,43 @@ def page_receipt_registration(user: dict):
                 'color_mode': validation['color_mode']
             }
 
-            # ===== OCR抽出 =====
-            st.subheader("ステップ2: OCR抽出")
+            # ===== Claude Vision による情報抽出 =====
+            st.subheader("ステップ2: AI情報抽出 (Claude Vision)")
 
-            with st.spinner("テキスト抽出中..."):
-                ocr_text = extract_text(ocr_target_bytes, use_mock=False)
-                ocr_result = extract_receipt_info(ocr_text)
+            with st.spinner("Claude が画像を読み取っています..."):
+                ocr_result = extract_receipt_from_image(image_bytes)
+
+            confidence = ocr_result.get('confidence_score', 0)
+            note = ocr_result.get('confidence_note', '') or ''
+
+            # 信頼度に応じて色を変える
+            if confidence >= 80:
+                st.success(f"✅ 抽出成功 (信頼度: {confidence}/100)")
+            elif confidence >= 50:
+                st.warning(f"⚠️ 一部不確実 (信頼度: {confidence}/100) — 下のフォームで必ず確認してください")
+            else:
+                st.error(f"❌ 抽出精度が低い (信頼度: {confidence}/100) — 手入力で確認・修正してください")
+
+            if note:
+                st.caption(f"💬 {note}")
 
             st.write("**抽出結果:**")
-            st.info(f"""
-            - 日付: {ocr_result['date'] or '検出不可'}
-            - 金額: {format_currency(ocr_result['amount']) if ocr_result['amount'] else '検出不可'}
-            - 店舗: {ocr_result['vendor'] or '検出不可'}
-            """)
+            info_lines = []
+            info_lines.append(f"- 店舗名: {ocr_result.get('store_name') or '検出不可'}")
+            info_lines.append(f"- 取引日: {ocr_result.get('transaction_date') or '検出不可'}")
+            info_lines.append(
+                f"- 合計金額: {format_currency(ocr_result['total_amount']) if ocr_result.get('total_amount') else '検出不可'}"
+            )
+            if ocr_result.get('phone_number'):
+                info_lines.append(f"- 電話番号: {ocr_result['phone_number']}")
+            if ocr_result.get('invoice_number'):
+                info_lines.append(f"- インボイス番号: {ocr_result['invoice_number']}")
+            if ocr_result.get('address'):
+                info_lines.append(f"- 住所: {ocr_result['address']}")
+            st.info("\n".join(info_lines))
 
-            if st.checkbox("抽出テキスト全文を表示"):
-                st.text_area("OCR抽出テキスト", value=ocr_result['raw_text'], height=200, disabled=True)
+            if st.checkbox("抽出結果の詳細 (JSON) を表示"):
+                st.code(ocr_result.get('raw_text', ''), language='json')
 
     # ===== レシート登録フォーム =====
     if image_data and ocr_result:
@@ -399,6 +409,25 @@ def page_receipt_registration(user: dict):
                 index=0
             )
 
+            # AI が抽出した追加情報 (インボイス番号・電話番号) を初期値にして編集可能に
+            phone_number = st.text_input(
+                "電話番号 (任意)",
+                value=ocr_result.get('phone_number') or "",
+                help="AIが抽出した店舗電話番号。必要に応じて修正してください。"
+            )
+
+            invoice_number = st.text_input(
+                "インボイス登録番号 (任意)",
+                value=ocr_result.get('invoice_number') or "",
+                help="適格請求書発行事業者登録番号 (T + 13桁)。電子帳簿保存法対応のため記録されます。"
+            )
+
+            store_address = st.text_input(
+                "店舗住所 (任意)",
+                value=ocr_result.get('address') or "",
+                help="AIが抽出した店舗住所。必要に応じて修正してください。"
+            )
+
             description = st.text_area(
                 "備考",
                 value="",
@@ -433,8 +462,12 @@ def page_receipt_registration(user: dict):
                             image_color_mode=image_data['color_mode'],
                             helper_email=helper_email,
                             helper_name=helper_name,
-                            ocr_raw_text=ocr_result['raw_text'],
+                            ocr_raw_text=ocr_result.get('raw_text'),
                             created_by=helper_email,
+                            phone_number=phone_number or None,
+                            invoice_number=invoice_number or None,
+                            store_address=store_address or None,
+                            ai_confidence=ocr_result.get('confidence_score'),
                         )
 
                         st.success(f"✅ レシート登録完了！（ID: {receipt_id}）")
@@ -615,6 +648,16 @@ def page_detail_and_edit(user: dict):
     st.write(f"**取引先:** {receipt['vendor']}")
     st.write(f"**費目:** {receipt['category']}")
     st.write(f"**登録日:** {receipt['created_at']}")
+
+    # AI抽出情報 (存在する場合のみ表示)
+    if receipt.get('phone_number'):
+        st.write(f"**電話番号:** {receipt['phone_number']}")
+    if receipt.get('invoice_number'):
+        st.write(f"**インボイス番号:** {receipt['invoice_number']}")
+    if receipt.get('store_address'):
+        st.write(f"**店舗住所:** {receipt['store_address']}")
+    if receipt.get('ai_confidence') is not None:
+        st.write(f"**AI信頼度:** {receipt['ai_confidence']}/100")
 
     if receipt['description']:
         st.write(f"**備考:** {receipt['description']}")

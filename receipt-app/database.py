@@ -268,6 +268,10 @@ def _sqlite_init():
             image_color_mode TEXT,
             scan_date TEXT NOT NULL,
             ocr_raw_text TEXT,
+            phone_number TEXT,
+            invoice_number TEXT,
+            store_address TEXT,
+            ai_confidence INTEGER,
             is_deleted INTEGER DEFAULT 0,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
@@ -275,13 +279,19 @@ def _sqlite_init():
         )
     ''')
 
-    # SQLite で既存テーブルに helper_email が無い場合は追加 (ローカル開発の互換性)
+    # 既存テーブルに新カラムを追加 (ローカル開発の互換性)
     cursor.execute("PRAGMA table_info(receipts)")
     cols = {row[1] for row in cursor.fetchall()}
-    if "helper_email" not in cols:
-        cursor.execute("ALTER TABLE receipts ADD COLUMN helper_email TEXT")
-    if "helper_name" not in cols:
-        cursor.execute("ALTER TABLE receipts ADD COLUMN helper_name TEXT")
+    for col_name, col_def in [
+        ("helper_email", "TEXT"),
+        ("helper_name", "TEXT"),
+        ("phone_number", "TEXT"),
+        ("invoice_number", "TEXT"),
+        ("store_address", "TEXT"),
+        ("ai_confidence", "INTEGER"),
+    ]:
+        if col_name not in cols:
+            cursor.execute(f"ALTER TABLE receipts ADD COLUMN {col_name} {col_def}")
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS receipt_audit_log (
@@ -369,6 +379,10 @@ def insert_receipt(
     helper_name: str = "",
     ocr_raw_text: str = None,
     created_by: str = None,
+    phone_number: Optional[str] = None,
+    invoice_number: Optional[str] = None,
+    store_address: Optional[str] = None,
+    ai_confidence: Optional[int] = None,
 ) -> int:
     """新規レシートを登録 (helper_email必須)"""
     now = datetime.now().isoformat()
@@ -392,6 +406,10 @@ def insert_receipt(
                 "image_color_mode": image_color_mode,
                 "scan_date": now,
                 "ocr_raw_text": ocr_raw_text,
+                "phone_number": phone_number,
+                "invoice_number": invoice_number,
+                "store_address": store_address,
+                "ai_confidence": ai_confidence,
                 "is_deleted": False,
                 "created_at": now,
                 "updated_at": now,
@@ -421,12 +439,14 @@ def insert_receipt(
             INSERT INTO receipts
             (helper_email, helper_name, transaction_date, amount, vendor, category, description,
              image_path, image_hash, image_dpi, image_color_mode,
-             scan_date, ocr_raw_text, created_at, updated_at, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             scan_date, ocr_raw_text, phone_number, invoice_number,
+             store_address, ai_confidence, created_at, updated_at, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             helper_email, helper_name, transaction_date, amount, vendor, category, description,
             image_path, image_hash, image_dpi, image_color_mode,
-            now, ocr_raw_text, now, now, created_by
+            now, ocr_raw_text, phone_number, invoice_number,
+            store_address, ai_confidence, now, now, created_by
         ))
         receipt_id = cursor.lastrowid
 

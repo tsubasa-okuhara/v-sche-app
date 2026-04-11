@@ -1,28 +1,56 @@
 """
-OCR（光学文字認識）ユーティリティモジュール
-レシートテキスト抽出と情報パース
+レシート情報抽出モジュール (Claude Vision API)
 
-OCRエンジン:
-  - EasyOCR（デフォルト）: 無料・無制限・オフライン対応
-  - Google Cloud Vision API（オプション）: 高精度だが月1,000件まで無料
+Claude Haiku 4.5 のマルチモーダル Vision API を用いて、
+画像から直接構造化情報（店名・日付・金額・電話番号・インボイス番号等）を抽出します。
+
+特徴:
+- easyocr/opencv/torch に依存しない (デプロイが高速)
+- 電話番号を手がかりに店舗名を推論
+- インボイス登録番号 (T+13桁) を自動抽出
+- ロゴ化された店名も周辺情報から補完
+- 信頼度スコアを自己採点
+
+環境変数または Streamlit secrets で ANTHROPIC_API_KEY を取得します。
 """
 
-import re
-from datetime import datetime
-from typing import Dict, Optional, Tuple, List
-from PIL import Image, ImageOps, ImageEnhance, ExifTags
+import base64
 import io
+import json
+import os
+import re
+from typing import Dict, Optional
+
+from PIL import Image, ExifTags
+
+# 使用するモデル
+CLAUDE_MODEL = "claude-haiku-4-5-20251001"
+
+# 送信前画像のリサイズ上限 (API トークン節約)
+MAX_IMAGE_SIDE = 1568
 
 
-# ===== 画像前処理 =====
+def _get_anthropic_api_key() -> Optional[str]:
+    """Anthropic API キーを環境変数または Streamlit secrets から取得"""
+    key = os.environ.get("ANTHROPIC_API_KEY")
+    if key:
+        return key
+    try:
+        import streamlit as st
+        if hasattr(st, "secrets") and "anthropic" in st.secrets:
+            return st.secrets["anthropic"].get("api_key")
+    except Exception:
+        pass
+    return None
+
 
 def _fix_exif_rotation(image: Image.Image) -> Image.Image:
-    """EXIF情報に基づいて画像の向きを修正"""
+    """EXIF 情報に基づいて画像の向きを補正"""
     try:
         exif = image._getexif()
         if exif:
             for tag, value in exif.items():
-                if ExifTags.TAGS.get(tag) == 'Orientation':
+                if ExifTags.TAGS.get(tag) == "Orientation":
                     if value == 3:
                         image = image.rotate(180, expand=True)
                     elif value == 6:
@@ -35,472 +63,215 @@ def _fix_exif_rotation(image: Image.Image) -> Image.Image:
     return image
 
 
-def _preprocess_for_ocr(image: Image.Image) -> Image.Image:
-    """OCR精度向上のための画像前処理"""
-    # コントラスト強調
-    enhancer = ImageEnhance.Contrast(image)
-    image = enhancer.enhance(1.5)
+def _prepare_image_for_api(image_bytes: bytes) -> tuple:
+    """
+    API 送信用に画像を加工 (EXIF回転補正 + リサイズ + JPEG再エンコード)
 
-    # シャープネス強調
-    enhancer = ImageEnhance.Sharpness(image)
-    image = enhancer.enhance(2.0)
+    Returns:
+        (base64_str, media_type) のタプル
+    """
+    image = Image.open(io.BytesIO(image_bytes))
+    image = _fix_exif_rotation(image)
 
-    return image
+    # RGB に正規化 (RGBA や P モードは JPEG にできない)
+    if image.mode not in ("RGB", "L"):
+        image = image.convert("RGB")
 
-
-def _resize_for_ocr(image: Image.Image, max_side: int = 1500) -> Image.Image:
-    """OCR用にリサイズ"""
+    # リサイズ (長辺 1568px 以下)
     w, h = image.size
-    if max(w, h) > max_side:
-        scale = max_side / max(w, h)
+    if max(w, h) > MAX_IMAGE_SIDE:
+        scale = MAX_IMAGE_SIDE / max(w, h)
         image = image.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
-    return image
+
+    buf = io.BytesIO()
+    image.save(buf, format="JPEG", quality=88, optimize=True)
+    b64 = base64.standard_b64encode(buf.getvalue()).decode("ascii")
+    return b64, "image/jpeg"
 
 
-# ===== EasyOCR =====
+# Claude に渡すシステムプロンプト
+_SYSTEM_PROMPT = """あなたは優秀な経費精算アシスタントです。
+添付されたレシート画像から情報を極めて正確に抽出してください。
 
-def extract_text_easyocr(image_bytes: bytes) -> Optional[str]:
-    """
-    EasyOCRを使用してテキスト抽出（無料・無制限）
+# 抽出のステップ (記載ミス防止ロジック)
+1. **電話番号の優先確認**: 画像内に電話番号 (03-xxxx-xxxx 等) があれば最優先で特定し、その番号に紐づく一般的な店名を推論してください。
+2. **インボイス登録番号の照合**: 「T」から始まる13桁の番号があれば抽出してください。
+3. **ロゴ・周辺文字の解析**: 店名がロゴ化されていて読み取りにくい場合、レシート下部の住所や発行元記載から店名を補完してください。
+4. **表記揺れの修正**: 「(株)」「ｶﾌｪ」などの表記は「株式会社」「カフェ」など正式名称に整えて出力してください。
+5. **金額の特定**: 「合計」「税込」「領収金額」「お会計」等の最終金額を優先。商品単価や小計と混同しないこと。
+6. **日付の特定**: 発行日・取引日を YYYY-MM-DD 形式で。令和年号は西暦に変換。
 
-    - EXIF回転を自動補正
-    - 4方向（0°/90°/180°/270°）を試して最も認識文字数が多い向きを採用
-    - 画像は自動的にOCR向けサイズに縮小（高速化）
+# 注意事項
+- 読み取りが曖昧な場合は、無理に確定せず該当フィールドを null にしてください。
+- 広告やクーポン情報の文字列を店名と混同しないよう注意してください。
+- 信頼度スコアは 0-100 で自己採点してください (画質が悪い/推測が多い場合は低めに)。
+- 出力は必ず JSON のみ。説明文や前置き、コードブロックは一切含めないでください。
 
-    Args:
-        image_bytes: 画像のバイナリデータ
+# 出力フォーマット (必ずこのJSONスキーマに従う)
+{
+  "store_name": "店舗名 (例: スターバックスコーヒー 渋谷店) または null",
+  "address": "住所 (例: 東京都渋谷区...) または null",
+  "phone_number": "電話番号 (ハイフン区切り 例: 03-1234-5678) または null",
+  "invoice_number": "Tから始まる13桁のインボイス登録番号 または null",
+  "transaction_date": "取引日 (YYYY-MM-DD) または null",
+  "total_amount": 税込合計金額の数値 (円, 整数) または null,
+  "confidence_score": 0から100の整数,
+  "confidence_note": "信頼度が低い場合はその理由 (短文)"
+}
+"""
 
-    Returns:
-        抽出されたテキスト
-    """
+
+def _extract_json_from_response(text: str) -> Optional[dict]:
+    """Claude のレスポンスから JSON オブジェクトを取り出す"""
+    text = text.strip()
+    # コードブロックで囲まれている場合に対応
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    # 余計な前後テキストがある場合、最初の { から最後の } までを抽出
     try:
-        import easyocr
-        import numpy as np
-
-        reader = easyocr.Reader(['ja', 'en'], gpu=False)
-
-        image = Image.open(io.BytesIO(image_bytes))
-
-        # EXIF回転を補正
-        image = _fix_exif_rotation(image)
-
-        # リサイズ + 前処理
-        image = _resize_for_ocr(image, max_side=1200)
-        image = _preprocess_for_ocr(image)
-
-        # まず現在の向きで試す
-        image_np = np.array(image)
-        results = reader.readtext(image_np)
-        best_text_parts = [text for (_, text, conf) in results if conf > 0.1]
-        best_total_chars = sum(len(t) for t in best_text_parts)
-        best_lines = best_text_parts
-
-        # 文字数が少ない場合、90°回転を試す（横向き撮影対策）
-        if best_total_chars < 20:
-            for angle in [90, 270, 180]:
-                rotated = image.rotate(angle, expand=True)
-                rot_np = np.array(rotated)
-                rot_results = reader.readtext(rot_np)
-                rot_parts = [text for (_, text, conf) in rot_results if conf > 0.1]
-                rot_chars = sum(len(t) for t in rot_parts)
-
-                if rot_chars > best_total_chars:
-                    best_total_chars = rot_chars
-                    best_lines = rot_parts
-
-                # 十分な文字数が取れたら終了
-                if best_total_chars >= 30:
-                    break
-
-        return '\n'.join(best_lines)
-
-    except ImportError:
-        print("easyocrがインストールされていません。pip install easyocr を実行してください")
-        return None
-    except Exception as e:
-        print(f"EasyOCR エラー: {str(e)}")
-        return None
-
-
-# ===== Google Cloud Vision API（オプション）=====
-
-def extract_text_google_vision(image_bytes: bytes) -> Optional[str]:
-    """
-    Google Cloud Vision APIを使用してOCR抽出
-
-    事前準備：
-    1. pip install google-cloud-vision
-    2. GOOGLE_APPLICATION_CREDENTIALS環境変数を設定
-
-    Args:
-        image_bytes: 画像のバイナリデータ
-
-    Returns:
-        抽出されたテキスト、エラーの場合はNone
-    """
-    try:
-        from google.cloud import vision
-
-        client = vision.ImageAnnotatorClient()
-        image = vision.Image(content=image_bytes)
-        response = client.document_text_detection(image=image)
-        text = response.full_text_annotation.text
-
-        if response.error.message:
-            print(f"Vision API エラー: {response.error.message}")
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group())
+        except json.JSONDecodeError:
             return None
-
-        return text
-
-    except ImportError:
-        print("google-cloud-vision がインストールされていません")
-        return None
-    except Exception as e:
-        print(f"Google Vision API エラー: {str(e)}")
-        return None
+    return None
 
 
-def extract_text(image_bytes: bytes, use_mock: bool = False) -> str:
+def _empty_result(reason: str = "") -> Dict:
+    """全フィールドが空の結果を返す"""
+    return {
+        "store_name": None,
+        "address": None,
+        "phone_number": None,
+        "invoice_number": None,
+        "transaction_date": None,
+        "total_amount": None,
+        "confidence_score": 0,
+        "confidence_note": reason or "抽出失敗",
+        # 互換フィールド (app.py の既存コード用)
+        "date": None,
+        "amount": None,
+        "vendor": None,
+        "raw_text": reason or "抽出失敗",
+    }
+
+
+def extract_receipt_from_image(image_bytes: bytes) -> Dict:
     """
-    OCRテキストを抽出
-
-    優先順位: EasyOCR → Google Vision API → モック
+    レシート画像から直接、構造化情報を抽出する (Claude Vision API)
 
     Args:
-        image_bytes: 画像のバイナリデータ
-        use_mock: Trueの場合はモックを強制使用
+        image_bytes: 画像バイナリ (JPEG/PNG)
 
     Returns:
-        抽出されたテキスト
+        {
+            "store_name": str | None,
+            "address": str | None,
+            "phone_number": str | None,
+            "invoice_number": str | None,
+            "transaction_date": "YYYY-MM-DD" | None,
+            "total_amount": int | None,
+            "confidence_score": int (0-100),
+            "confidence_note": str,
+            # 互換フィールド (既存フォームとの後方互換用)
+            "date": "YYYY-MM-DD" | None,
+            "amount": float | None,
+            "vendor": str | None,
+            "raw_text": str,  # JSON 文字列
+        }
     """
-    if use_mock:
-        return _mock_text()
-
-    # EasyOCRを試す
-    result = extract_text_easyocr(image_bytes)
-    if result:
-        return result
-
-    # Google Vision APIを試す
-    result = extract_text_google_vision(image_bytes)
-    if result:
-        return result
-
-    # すべて失敗した場合
-    return "[OCRエンジンが利用できません。pip install easyocr を実行してください]"
-
-
-def _mock_text() -> str:
-    """テスト用のモックテキスト"""
-    return """コンビニエンスストア ABC
-東京都渋谷区
-2024年3月15日 14:23
-商品A  980円
-商品B  1,200円
-合計  2,180円"""
-
-
-# ===== テキスト解析ルーチン =====
-
-def _normalize_ocr_text(text: str) -> str:
-    """OCRテキストを正規化（行結合・全角→半角数字など）"""
-    # 全角数字→半角
-    zen = '０１２３４５６７８９'
-    han = '0123456789'
-    for z, h in zip(zen, han):
-        text = text.replace(z, h)
-
-    # 全角スラッシュ→半角
-    text = text.replace('／', '/')
-
-    # 改行をスペースに変換した版も作る（行をまたいだパターン検出用）
-    return text
-
-
-def parse_date(text: str) -> Optional[str]:
-    """
-    OCRテキストから日付を抽出
-
-    対応形式:
-    - YYYY年MM月DD日
-    - YYYY/MM/DD
-    - YYYY-MM-DD
-    - 令和X年MM月DD日
-    - R8.X.X
-    """
-    # テキスト正規化
-    text = _normalize_ocr_text(text)
-
-    # 改行をまたぐパターンにも対応するため、スペース結合版でも探す
-    text_joined = text.replace('\n', ' ')
-    search_texts = [text, text_joined]
-
-    for t in search_texts:
-        # パターン1: YYYY年MM月DD日
-        match = re.search(r'(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?', t)
-        if match:
-            year, month, day = match.groups()
-            return f"{year}-{month.zfill(2)}-{day.zfill(2)}"
-
-        # パターン2: YYYY/MM/DD
-        match = re.search(r'(\d{4})\s*/\s*(\d{1,2})\s*/\s*(\d{1,2})', t)
-        if match:
-            year, month, day = match.groups()
-            return f"{year}-{month.zfill(2)}-{day.zfill(2)}"
-
-        # パターン3: YYYY-MM-DD
-        match = re.search(r'(\d{4})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})', t)
-        if match:
-            year, month, day = match.groups()
-            return f"{year}-{month.zfill(2)}-{day.zfill(2)}"
-
-        # パターン4: 令和X年MM月DD日
-        match = re.search(r'令和\s*(\d{1,2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?', t)
-        if match:
-            reiwa_year, month, day = match.groups()
-            year = 2018 + int(reiwa_year)
-            return f"{year}-{month.zfill(2)}-{day.zfill(2)}"
-
-        # パターン5: R8.X.X または R8/X/X
-        match = re.search(r'R\s*(\d{1,2})\s*[./\s]\s*(\d{1,2})\s*[./\s]\s*(\d{1,2})', t)
-        if match:
-            reiwa_year, month, day = match.groups()
-            year = 2018 + int(reiwa_year)
-            return f"{year}-{month.zfill(2)}-{day.zfill(2)}"
-
-        # パターン6: XX年MM月DD日（和暦の年だけ2桁）
-        match = re.search(r'(\d{2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?', t)
-        if match:
-            short_year, month, day = match.groups()
-            year_int = int(short_year)
-            if year_int <= 20:
-                year = 2018 + year_int
-            else:
-                year = 2000 + year_int
-            return f"{year}-{month.zfill(2)}-{day.zfill(2)}"
-
-    return None
-
-    return None
-
-
-def parse_amount(text: str) -> Optional[float]:
-    """
-    OCRテキストから金額を抽出
-
-    対応パターン:
-    - 合計 ¥1,234 / 合計 1,234円
-    - TOTAL ¥1,234
-    - 税込 1,234円
-    - 領収金額 ¥1,234
-    - ¥1,234 / 1,234円 の全出現から最大値
-    """
-    text = _normalize_ocr_text(text)
-    # 改行結合版でも検索
-    text = text + '\n' + text.replace('\n', ' ')
-
-    all_amounts = []
-
-    # パターン群: 「合計」「税込」「領収」「TOTAL」など明示キーワードの後の金額
-    keywords = [
-        r'(?:合\s*計|TOTAL|total|Total)',
-        r'(?:税\s*込)',
-        r'(?:領\s*収)',
-        r'(?:お\s*預\s*り)',
-    ]
-
-    for kw in keywords:
-        # ¥記号あり: 合計 ¥1,234
-        for m in re.finditer(kw + r'[^\d¥￥]*[¥￥]\s*([\d,]+)', text):
-            try:
-                all_amounts.append(('keyword', float(m.group(1).replace(',', ''))))
-            except ValueError:
-                pass
-        # 円記号あり: 合計 1,234円
-        for m in re.finditer(kw + r'[^\d]*([\d,]+)\s*円', text):
-            try:
-                all_amounts.append(('keyword', float(m.group(1).replace(',', ''))))
-            except ValueError:
-                pass
-
-    # パターン: ¥に続く数字（全般）
-    for m in re.finditer(r'[¥￥]\s*([\d,]+)', text):
-        try:
-            all_amounts.append(('yen', float(m.group(1).replace(',', ''))))
-        except ValueError:
-            pass
-
-    # パターン: 数字+円（全般）
-    for m in re.finditer(r'([\d,]+)\s*円', text):
-        try:
-            all_amounts.append(('en', float(m.group(1).replace(',', ''))))
-        except ValueError:
-            pass
-
-    if not all_amounts:
-        return None
-
-    # キーワード付きがあればその中の最大値を返す（合計額の可能性が高い）
-    keyword_amounts = [amt for tag, amt in all_amounts if tag == 'keyword']
-    if keyword_amounts:
-        return max(keyword_amounts)
-
-    # なければ全金額の最大値（合計額は最大であることが多い）
-    return max(amt for _, amt in all_amounts)
-
-
-def parse_vendor(text: str) -> Optional[str]:
-    """
-    OCRテキストから取引先（店舗名等）を抽出
-
-    戦略:
-    1. 先頭の意味のある行を取得
-    2. 日付・金額・住所っぽい行はスキップ
-    """
-    lines = text.split('\n')
-
-    # スキップすべきパターン
-    skip_patterns = [
-        r'^\d{4}[/\-年]',              # 日付で始まる
-        r'^R\d',                         # 令和略記
-        r'^[¥￥]',                       # 金額で始まる
-        r'^\d+円',                       # 金額
-        r'^(合計|小計|税|TOTAL)',         # 金額キーワード
-        r'^\d{2,4}[/\-]\d{1,2}[/\-]',  # 日付
-        r'^(東京|大阪|京都|北海|神奈|千葉|埼玉|愛知|福岡)',  # 住所
-        r'^\d+[\-ー]\d+',              # 電話番号・郵便番号
-        r'^(TEL|FAX|tel|fax)',          # 電話
-        r'^(〒|\d{3}-\d{4})',           # 郵便番号
-        r'^(登録番号|インボイス)',        # インボイス関連
-        r'^(レシート|領収|receipt)',      # レシートヘッダ
-    ]
-
-    for line in lines:
-        line = line.strip()
-        if not line or len(line) < 2:
-            continue
-
-        # スキップパターンに該当するか
-        should_skip = False
-        for pattern in skip_patterns:
-            if re.match(pattern, line):
-                should_skip = True
-                break
-
-        if not should_skip:
-            # 長すぎる行は店名ではない可能性が高い
-            if len(line) <= 30:
-                return line
-
-    return None
-
-
-def extract_receipt_info_with_ai(ocr_text: str) -> Optional[Dict]:
-    """
-    Claude APIを使ってOCRテキストから情報を抽出（高精度）
-
-    環境変数 ANTHROPIC_API_KEY が設定されている場合に使用
-
-    Args:
-        ocr_text: OCRで抽出された生テキスト
-
-    Returns:
-        抽出情報の辞書、またはNone（API未設定時）
-    """
-    import os
-    api_key = os.environ.get('ANTHROPIC_API_KEY', '')
-
-    # Streamlit secrets からも取得
+    api_key = _get_anthropic_api_key()
     if not api_key:
-        try:
-            import streamlit as st
-            if hasattr(st, 'secrets') and 'anthropic' in st.secrets:
-                api_key = st.secrets['anthropic'].get('api_key', '')
-        except Exception:
-            pass
-
-    if not api_key:
-        return None
+        return _empty_result("ANTHROPIC_API_KEY が設定されていません")
 
     try:
         import anthropic
-
-        client = anthropic.Anthropic(api_key=api_key)
-
-        prompt = f"""以下のテキストは、レシートをOCR（文字認識）で読み取った生データです。
-誤字脱字を補完し、必要な情報を抽出してください。
-
-# 抽出項目
-1. store_name: 店舗名（正式名称を推定）
-2. date: 取引日（YYYY-MM-DD形式）
-3. total_amount: 合計金額（税込、数値のみ）
-
-# ルール
-- 情報が見つからない場合は null としてください
-- 合計金額は「合計」「税込」「領収額」などの最終金額を使ってください
-- 必ず以下のJSON形式のみ出力してください（説明不要）
-
-# OCRデータ
-{ocr_text}
-
-# 出力（JSONのみ）"""
-
-        message = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=300,
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        # レスポンスからJSONを抽出
-        import json
-        response_text = message.content[0].text.strip()
-
-        # JSON部分を抽出（```json ... ``` で囲まれている場合も対応）
-        json_match = re.search(r'\{[^{}]+\}', response_text, re.DOTALL)
-        if json_match:
-            data = json.loads(json_match.group())
-            return {
-                'date': data.get('date'),
-                'amount': float(data['total_amount']) if data.get('total_amount') else None,
-                'vendor': data.get('store_name'),
-                'raw_text': ocr_text
-            }
-
     except ImportError:
-        print("anthropic パッケージが未インストールです。pip install anthropic を実行してください")
+        return _empty_result("anthropic パッケージ未インストール")
+
+    try:
+        b64, media_type = _prepare_image_for_api(image_bytes)
     except Exception as e:
-        print(f"Claude API エラー: {str(e)}")
+        return _empty_result(f"画像前処理エラー: {e}")
 
-    return None
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        message = client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=1024,
+            system=_SYSTEM_PROMPT,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": b64,
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": "このレシート画像から情報を抽出し、指定されたJSONスキーマで返してください。",
+                        },
+                    ],
+                }
+            ],
+        )
+    except Exception as e:
+        return _empty_result(f"Claude API エラー: {e}")
 
+    # レスポンスから JSON を取り出す
+    try:
+        raw_text = message.content[0].text
+    except (IndexError, AttributeError):
+        return _empty_result("Claude から空レスポンス")
 
-def extract_receipt_info(ocr_text: str) -> Dict:
-    """
-    OCRテキストからレシート情報を抽出・パース
+    data = _extract_json_from_response(raw_text)
+    if not data:
+        return _empty_result(f"JSON パース失敗: {raw_text[:200]}")
 
-    優先順位: Claude API（高精度）→ ルールベース（フォールバック）
+    # 型の正規化 & 互換フィールドの追加
+    store_name = data.get("store_name") or None
+    address = data.get("address") or None
+    phone_number = data.get("phone_number") or None
+    invoice_number = data.get("invoice_number") or None
+    transaction_date = data.get("transaction_date") or None
 
-    Args:
-        ocr_text: OCRで抽出されたテキスト
+    amount_raw = data.get("total_amount")
+    try:
+        amount = float(amount_raw) if amount_raw is not None else None
+    except (ValueError, TypeError):
+        amount = None
 
-    Returns:
-        抽出情報の辞書:
-        {
-            'date': '2024-03-15' or None,
-            'amount': 2893.0 or None,
-            'vendor': '店舗名' or None,
-            'raw_text': ocr_text
-        }
-    """
-    # まずClaude APIで解析を試みる
-    ai_result = extract_receipt_info_with_ai(ocr_text)
-    if ai_result:
-        return ai_result
+    confidence_raw = data.get("confidence_score", 0)
+    try:
+        confidence = int(confidence_raw)
+    except (ValueError, TypeError):
+        confidence = 0
+    confidence = max(0, min(100, confidence))
 
-    # フォールバック: ルールベース解析
+    confidence_note = data.get("confidence_note") or ""
+
     return {
-        'date': parse_date(ocr_text),
-        'amount': parse_amount(ocr_text),
-        'vendor': parse_vendor(ocr_text),
-        'raw_text': ocr_text
+        "store_name": store_name,
+        "address": address,
+        "phone_number": phone_number,
+        "invoice_number": invoice_number,
+        "transaction_date": transaction_date,
+        "total_amount": amount,
+        "confidence_score": confidence,
+        "confidence_note": confidence_note,
+        # 互換フィールド
+        "date": transaction_date,
+        "amount": amount,
+        "vendor": store_name,
+        "raw_text": json.dumps(data, ensure_ascii=False, indent=2),
     }
